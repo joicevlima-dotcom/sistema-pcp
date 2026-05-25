@@ -153,6 +153,81 @@ with aba1:
 
     arquivo_pdf = st.file_uploader("Selecione o PDF (O.P., Padrão de Cortes ou Lista de Itens):", type=["pdf"])
 
+    # ============================================================
+    # INCLUSÃO MANUAL DE ITENS
+    # ============================================================
+
+    st.markdown("---")
+
+    if "modo_manual" not in st.session_state:
+        st.session_state.modo_manual = False
+
+    if st.button("➕ Incluir Item Manualmente"):
+        st.session_state.modo_manual = not st.session_state.modo_manual
+
+    if st.session_state.modo_manual:
+
+        st.subheader("Inclusão Manual de Item")
+
+        colm1, colm2, colm3, colm4 = st.columns(4)
+
+        with colm1:
+            manual_codigo = st.text_input("Código/Perfil")
+
+        with colm2:
+            manual_descricao = st.text_input("Descrição")
+
+        with colm3:
+            manual_medida = st.text_input("Medida")
+
+        with colm4:
+            manual_qtd = st.number_input(
+                "Quantidade",
+                min_value=1,
+                value=1,
+                step=1
+            )
+
+        if st.button("💾 Salvar Item Manual"):
+
+            if not numero_op or not obra_input:
+                st.error("Preencha o Número da OP e o Nome da Obra antes de salvar.")
+
+            else:
+
+                novo_item = {
+                    "OP": str(numero_op).strip(),
+                    "Obra": obra_input.upper().strip(),
+                    "Projeto": projeto_input.strip(),
+                    "Tipo_Cod": manual_codigo.upper().strip(),
+                    "Descricao": manual_descricao.upper().strip(),
+                    "Medida": manual_medida.strip(),
+                    "Qtd_Total": int(manual_qtd),
+                    "Qtd_Enviada": 0,
+                    "Saldo": int(manual_qtd)
+                }
+
+                df_novo = pd.DataFrame([novo_item])
+
+                try:
+                    if os.path.exists(BANCO_DADOS):
+                        df_existente = pd.read_excel(BANCO_DADOS)
+                        df_final = pd.concat([df_existente, df_novo], ignore_index=True)
+                    else:
+                        df_final = df_novo
+
+                    df_final.to_excel(BANCO_DADOS, index=False)
+
+                    st.success("Item manual incluído com sucesso!")
+                    st.dataframe(df_novo, use_container_width=True)
+
+                except Exception as e:
+                    st.error(f"Erro ao salvar item manual: {e}")
+
+    # ============================================================
+    # PROCESSAMENTO DO PDF
+    # ============================================================
+
     if arquivo_pdf is not None:
 
         st.info("PDF carregado com sucesso.")
@@ -173,8 +248,8 @@ with aba1:
                 st.error("Por favor, preencha o Número da OP e o Nome da Obra.")
             else:
                 # Identificação inteligente do modelo do arquivo
-                tipo_documento = "TRADICIONAL" 
-                
+                tipo_documento = "TRADICIONAL"
+
                 with pdfplumber.open(arquivo_pdf) as pdf:
                     for pagina in pdf.pages:
                         texto_pag = pagina.extract_text()
@@ -218,8 +293,8 @@ with aba1:
                                     pular_para_codigo = True
                                     continue
 
-                                if ("Qtde Barra" in linha or "Barra Útil:" in linha or 
-                                    "Qtde total do item" in linha or "Barras:" or "barras:" in linha.lower()):
+                                if ("Qtde Barra" in linha or "Barra Útil:" in linha or
+                                    "Qtde total do item" in linha or "Barras:" in linha or "barras:" in linha.lower()):
                                     ignorar_bloco = True
                                     continue
 
@@ -229,7 +304,8 @@ with aba1:
                                 if pular_para_codigo:
                                     partes_p = linha.split()
                                     if partes_p:
-                                        perfil_atual = partes_p.upper()
+                                        # BUG CORRIGIDO: era partes_p.upper(), faltava índice [0]
+                                        perfil_atual = partes_p[0].upper()
                                     pular_para_codigo = False
                                     pular_para_descricao = True
                                     continue
@@ -240,8 +316,9 @@ with aba1:
                                     continue
 
                                 partes_linha = linha.split()
-                                if len(partes_linha) == 1 and re.match(r'^[A-Z]{2,3}\d{3,4}$', partes_linha):
-                                    perfil_atual = partes_linha.upper()
+                                # BUG CORRIGIDO: era partes_linha sem índice [0]
+                                if len(partes_linha) == 1 and re.match(r'^[A-Z]{2,3}\d{3,4}$', partes_linha[0]):
+                                    perfil_atual = partes_linha[0].upper()
                                     continue
 
                                 match_corte = padrao_linha_corte.match(linha)
@@ -275,11 +352,9 @@ with aba1:
                 elif tipo_documento == "ITENS_OBRA":
                     st.info("Detectado: Lista de Itens da Obra. Processando esquadrias e tipologias...")
                     itens_extraidos = []
-                    
-                    # Regex para capturar: Tipo (ex: P01), Qtd, L, H
-                    # Padrão: Código curto (letras+números), seguido de número, seguido de largura e altura
+
                     padrao_item_obra = re.compile(r'^([A-Za-z0-9\-\.]+)\s+(\d+)\s+(\d+)\s+(\d+)')
-                    
+
                     categoria_atual = "Esquadria"
 
                     with pdfplumber.open(arquivo_pdf) as pdf:
@@ -287,28 +362,27 @@ with aba1:
                             texto = pagina.extract_text()
                             if not texto:
                                 continue
-                                
+
                             for linha in texto.split("\n"):
                                 linha = linha.strip()
                                 if not linha or "TOTAIS:" in linha:
                                     continue
-                                    
-                                # Identifica o bloco de descrição da esquadria (GOL-PCR300, etc.) antes da tabela de dimensões
+
                                 if ("PORTA" in linha or "JANELA" in linha or "FIXO" in linha or "-" in linha) and len(linha) > 8 and not padrao_item_obra.match(linha):
                                     if "tipo" not in linha.lower() and "quantidade" not in linha.lower() and "obra" not in linha.lower():
                                         categoria_atual = linha.strip()
-                                
+
                                 match_item = padrao_item_obra.match(linha)
                                 if match_item:
                                     tipo_cod = match_item.group(1).upper()
                                     qtd = int(match_item.group(2))
                                     largura = match_item.group(3)
                                     altura = match_item.group(4)
-                                    
+
                                     desc_final = f"{categoria_atual}"
                                     if descricao_manual:
                                         desc_final += f" ({descricao_manual.upper()})"
-                                        
+
                                     itens_extraidos.append({
                                         "OP": str(numero_op).strip(),
                                         "Obra": obra_input.upper().strip(),
@@ -322,7 +396,7 @@ with aba1:
                                     })
 
                 # =========================================================
-                # MODELO 3: PDF TRADICIONAL DE O.P. 
+                # MODELO 3: PDF TRADICIONAL DE O.P.
                 # =========================================================
                 else:
                     st.info("Detectado: PDF Padrão de O.P. Processando...")
@@ -368,7 +442,6 @@ with aba1:
                         try:
                             df_banco = pd.read_excel(BANCO_DADOS)
                             if not df_banco.empty and "OP" in df_banco.columns:
-                                # Remove registros antigos dessa OP para não duplicar se reimportar
                                 df_banco = df_banco[df_banco["OP"].astype(str) != str(numero_op).strip()]
                             df_final = pd.concat([df_banco, df_novos], ignore_index=True)
                         except:
@@ -499,7 +572,8 @@ with aba2:
                         img2.height = 45
                         ws.add_image(img2, "E1")
 
-                    primeiro_item = lista_liberacao['item']
+                    # BUG CORRIGIDO: era lista_liberacao['item'] (índice string em lista)
+                    primeiro_item = lista_liberacao[0]['item']
 
                     ws["A4"] = "Nº:"
                     ws["B4"] = str(op_selecionada)
@@ -591,7 +665,7 @@ with aba2:
                     st.rerun()
 
 # ============================================================
-# APA 3: PAINEL GERAL DE SALDOS
+# ABA 3: PAINEL GERAL DE SALDOS
 # ============================================================
 
 with aba3:
