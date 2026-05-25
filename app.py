@@ -655,14 +655,13 @@ with aba2:
                     wb.save(buffer)
                     buffer.seek(0)
 
-                    st.success("Romaneio gerado com sucesso!")
+                    st.success("Romaneio gerado com sucesso! Clique no botão abaixo para baixar.")
                     st.download_button(
                         label="⬇️ Baixar Romaneio do Carregamento",
                         data=buffer,
                         file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                    st.rerun()
 
 # ============================================================
 # ABA 3: PAINEL GERAL DE SALDOS
