@@ -45,15 +45,13 @@ if not st.session_state.logado:
         </div>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col2:
-
         usuario = st.text_input("Usuário", placeholder="Digite seu usuário")
         senha = st.text_input("Senha", type="password", placeholder="Digite sua senha")
 
         if st.button("Entrar", use_container_width=True):
-
             if usuario in USUARIOS and USUARIOS[usuario] == senha:
                 st.session_state.logado = True
                 st.session_state.usuario = usuario
@@ -92,7 +90,7 @@ st.markdown("""
 # TOPO
 # ============================================================
 
-col_topo1, col_topo2 = st.columns([8, 1])
+col_topo1, col_topo2 = st.columns([3, 1])
 
 with col_topo1:
     st.title("Sistema de Gestão de Saldos e Romaneios")
@@ -126,45 +124,40 @@ if not os.path.exists(BANCO_DADOS):
 # ============================================================
 
 aba1, aba2, aba3 = st.tabs([
-    "Importação de O.P.",
+    "Importação de O.P. / Cortes / Itens",
     "Emissão de Romaneio Parcial",
     "Painel Geral de Saldos"
 ])
 
 # ============================================================
-# ABA 1
+# ABA 1: IMPORTAÇÃO INTELIGENTE MULTI-MODELO
 # ============================================================
 
 with aba1:
 
-    st.subheader("Registro e Integração de PDF de Produção")
+    st.subheader("Registro e Integração de Documentos Técnicos do Projetista")
 
     col_input1, col_input2, col_input3, col_input4 = st.columns(4)
 
     with col_input1:
-        numero_op = st.text_input("Número da OP:", placeholder="Ex: 1100")
+        numero_op = st.text_input("Número da OP:", placeholder="Ex: 1101")
 
     with col_input2:
-        obra_input = st.text_input("Nome da Obra:", placeholder="Ex: CETOR DUO")
+        obra_input = st.text_input("Nome da Obra:", placeholder="Ex: PLANETAPEIA")
 
     with col_input3:
-        projeto_input = st.text_input("Projeto:", placeholder="Ex: 931")
+        projeto_input = st.text_input("Projeto/Lote:", placeholder="Ex: PORTAS")
 
     with col_input4:
         descricao_manual = st.text_input("Descrição Manual:", placeholder="Opcional")
 
-    arquivo_pdf = st.file_uploader("Selecione o PDF:", type=["pdf"])
+    arquivo_pdf = st.file_uploader("Selecione o PDF (O.P., Padrão de Cortes ou Lista de Itens):", type=["pdf"])
 
     if arquivo_pdf is not None:
 
         st.info("PDF carregado com sucesso.")
 
-        # ====================================================
-        # DEBUG
-        # ====================================================
-
         if st.button("🔍 Ver texto bruto do PDF"):
-
             with pdfplumber.open(arquivo_pdf) as pdf:
                 for i, pagina in enumerate(pdf.pages):
                     texto = pagina.extract_text()
@@ -175,145 +168,222 @@ with aba1:
                         else:
                             st.warning("Nenhum texto encontrado.")
 
-        # ====================================================
-        # PROCESSAMENTO
-        # ====================================================
-
         if st.button("Processar Documento Técnico"):
-
             if not numero_op or not obra_input:
-                st.error("Preencha Número da OP e Obra.")
-
+                st.error("Por favor, preencha o Número da OP e o Nome da Obra.")
             else:
-
-                itens_extraidos = []
-
-                CABECALHO_LINHA = "Tipo Quantidade L H Peso Unit"
-
-                IGNORAR_PREFIXOS = (
-                    "Obs:", "TOTAIS", "Emitido", "Obra:", "Endereço:",
-                    "Cliente:", "Tratamento:", "PESO =", "Itens da Obra"
-                )
-
-                def is_linha_subtotal(partes):
-                    if not partes:
-                        return False
-                    try:
-                        return (
-                            all(
-                                p.replace(',', '').replace('.', '').isdigit()
-                                for p in partes
-                            )
-                            and len(partes) <= 4
-                        )
-                    except:
-                        return False
-
-                def is_linha_item(partes):
-                    if len(partes) < 5:
-                        return False
-                    tipo = partes[0]
-                    if not re.match(r'^[A-Za-z][A-Za-z0-9\-]+$', tipo):
-                        return False
-                    try:
-                        qtd = int(partes[1])
-                        l = int(partes[2])
-                        h = int(partes[3])
-                        peso = float(partes[4].replace(',', '.'))
-                        return qtd > 0 and l > 0 and h > 0 and peso > 0
-                    except:
-                        return False
-
-                def is_linha_descricao(partes):
-                    if not partes:
-                        return False
-                    return bool(re.match(r'^[A-Za-z0-9]+-[A-Za-z0-9\-]+$', partes[0]))
-
-                if descricao_manual.strip():
-                    descricao_atual = descricao_manual.upper().strip()
-                else:
-                    descricao_atual = "SEM DESCRIÇÃO"
-
+                # Identificação inteligente do modelo do arquivo
+                tipo_documento = "TRADICIONAL" 
+                
                 with pdfplumber.open(arquivo_pdf) as pdf:
-
                     for pagina in pdf.pages:
+                        texto_pag = pagina.extract_text()
+                        if texto_pag:
+                            texto_pag_lower = texto_pag.lower()
+                            if "padrões de cortes" in texto_pag_lower or "tam corte" in texto_pag_lower:
+                                tipo_documento = "CORTES"
+                                break
+                            elif "itens da obra" in texto_pag_lower:
+                                tipo_documento = "ITENS_OBRA"
+                                break
 
-                        texto = pagina.extract_text()
+                # =========================================================
+                # MODELO 1: RELATÓRIO DE PADRÕES DE CORTES (SmartCEM)
+                # =========================================================
+                if tipo_documento == "CORTES":
+                    st.info("Detectado: Relatório de Padrão de Cortes. Processando barras e ângulos...")
+                    itens_extraidos = []
 
-                        if not texto:
-                            continue
+                    perfil_atual = "N/D"
+                    descricao_atual = "N/D"
+                    pular_para_codigo = False
+                    pular_para_descricao = False
+                    ignorar_bloco = False
 
-                        for linha in texto.split("\n"):
+                    padrao_linha_corte = re.compile(r'^(\d+)\s+([0-9\.]+)\s+([0-9/\$]+)')
 
-                            linha = linha.strip()
-
-                            if not linha:
+                    with pdfplumber.open(arquivo_pdf) as pdf:
+                        for pagina in pdf.pages:
+                            texto = pagina.extract_text()
+                            if not texto:
                                 continue
 
-                            if any(linha.startswith(pref) for pref in IGNORAR_PREFIXOS):
+                            for linha in texto.split("\n"):
+                                linha = linha.strip()
+                                if not linha:
+                                    continue
+
+                                if "Classe/ID:" in linha:
+                                    ignorar_bloco = False
+                                    pular_para_codigo = True
+                                    continue
+
+                                if ("Qtde Barra" in linha or "Barra Útil:" in linha or 
+                                    "Qtde total do item" in linha or "Barras:" or "barras:" in linha.lower()):
+                                    ignorar_bloco = True
+                                    continue
+
+                                if ignorar_bloco:
+                                    continue
+
+                                if pular_para_codigo:
+                                    partes_p = linha.split()
+                                    if partes_p:
+                                        perfil_atual = partes_p.upper()
+                                    pular_para_codigo = False
+                                    pular_para_descricao = True
+                                    continue
+
+                                if pular_para_descricao:
+                                    descricao_atual = linha
+                                    pular_para_descricao = False
+                                    continue
+
+                                partes_linha = linha.split()
+                                if len(partes_linha) == 1 and re.match(r'^[A-Z]{2,3}\d{3,4}$', partes_linha):
+                                    perfil_atual = partes_linha.upper()
+                                    continue
+
+                                match_corte = padrao_linha_corte.match(linha)
+                                if match_corte:
+                                    qtd = int(match_corte.group(1))
+                                    tam = int(float(match_corte.group(2)))
+                                    corte_tipo = match_corte.group(3).replace('$', '')
+
+                                    if tam in (6000, 6400):
+                                        continue
+
+                                    desc_final = f"PERFIL: {descricao_atual}"
+                                    if descricao_manual:
+                                        desc_final += f" ({descricao_manual.upper()})"
+
+                                    itens_extraidos.append({
+                                        "OP": str(numero_op).strip(),
+                                        "Obra": obra_input.upper().strip(),
+                                        "Projeto": projeto_input.strip(),
+                                        "Tipo_Cod": perfil_atual,
+                                        "Descricao": desc_final,
+                                        "Medida": f"{tam} mm ({corte_tipo}º)",
+                                        "Qtd_Total": qtd,
+                                        "Qtd_Enviada": 0,
+                                        "Saldo": qtd
+                                    })
+
+                # =========================================================
+                # MODELO 2: LISTA DE ITENS DA OBRA (Tipologias/Esquadrias prontas)
+                # =========================================================
+                elif tipo_documento == "ITENS_OBRA":
+                    st.info("Detectado: Lista de Itens da Obra. Processando esquadrias e tipologias...")
+                    itens_extraidos = []
+                    
+                    # Regex para capturar: Tipo (ex: P01), Qtd, L, H
+                    # Padrão: Código curto (letras+números), seguido de número, seguido de largura e altura
+                    padrao_item_obra = re.compile(r'^([A-Za-z0-9\-\.]+)\s+(\d+)\s+(\d+)\s+(\d+)')
+                    
+                    categoria_atual = "Esquadria"
+
+                    with pdfplumber.open(arquivo_pdf) as pdf:
+                        for pagina in pdf.pages:
+                            texto = pagina.extract_text()
+                            if not texto:
                                 continue
-
-                            if CABECALHO_LINHA in linha:
-                                continue
-
-                            partes = linha.split()
-
-                            if is_linha_subtotal(partes):
-                                continue
-
-                            if not descricao_manual.strip() and is_linha_descricao(partes):
-                                descricao_atual = " ".join(partes[1:]).upper()
-                                continue
-
-                            if is_linha_item(partes):
-                                try:
-                                    tipo_cod = partes[0].upper()
-                                    qtd = int(partes[1])
-                                    medida = f"{partes[2]}x{partes[3]}"
-
-                                    item_mapeado = {
+                                
+                            for linha in texto.split("\n"):
+                                linha = linha.strip()
+                                if not linha or "TOTAIS:" in linha:
+                                    continue
+                                    
+                                # Identifica o bloco de descrição da esquadria (GOL-PCR300, etc.) antes da tabela de dimensões
+                                if ("PORTA" in linha or "JANELA" in linha or "FIXO" in linha or "-" in linha) and len(linha) > 8 and not padrao_item_obra.match(linha):
+                                    if "tipo" not in linha.lower() and "quantidade" not in linha.lower() and "obra" not in linha.lower():
+                                        categoria_atual = linha.strip()
+                                
+                                match_item = padrao_item_obra.match(linha)
+                                if match_item:
+                                    tipo_cod = match_item.group(1).upper()
+                                    qtd = int(match_item.group(2))
+                                    largura = match_item.group(3)
+                                    altura = match_item.group(4)
+                                    
+                                    desc_final = f"{categoria_atual}"
+                                    if descricao_manual:
+                                        desc_final += f" ({descricao_manual.upper()})"
+                                        
+                                    itens_extraidos.append({
                                         "OP": str(numero_op).strip(),
                                         "Obra": obra_input.upper().strip(),
                                         "Projeto": projeto_input.strip(),
                                         "Tipo_Cod": tipo_cod,
-                                        "Descricao": descricao_atual,
+                                        "Descricao": desc_final,
+                                        "Medida": f"{largura} x {altura} mm",
+                                        "Qtd_Total": qtd,
+                                        "Qtd_Enviada": 0,
+                                        "Saldo": qtd
+                                    })
+
+                # =========================================================
+                # MODELO 3: PDF TRADICIONAL DE O.P. 
+                # =========================================================
+                else:
+                    st.info("Detectado: PDF Padrão de O.P. Processando...")
+                    itens_extraidos = []
+
+                    padrao_op_tradicional = re.compile(r'^([A-Za-z0-9\-\.\/]+)\s+(.*?)\s+(\d+x\d+|\d+[\,\.]?\d*)\s+(\d+)$')
+
+                    with pdfplumber.open(arquivo_pdf) as pdf:
+                        for pagina in pdf.pages:
+                            texto_op = pagina.extract_text()
+                            if not texto_op:
+                                continue
+                            for linha in texto_op.split("\n"):
+                                linha = linha.strip()
+                                match_op = padrao_op_tradicional.match(linha)
+                                if match_op:
+                                    cod = match_op.group(1)
+                                    desc = match_op.group(2)
+                                    medida = match_op.group(3)
+                                    qtd = int(match_op.group(4))
+
+                                    if descricao_manual:
+                                        desc = f"{desc} ({descricao_manual.upper()})"
+
+                                    itens_extraidos.append({
+                                        "OP": str(numero_op).strip(),
+                                        "Obra": obra_input.upper().strip(),
+                                        "Projeto": projeto_input.strip(),
+                                        "Tipo_Cod": cod,
+                                        "Descricao": desc,
                                         "Medida": medida,
                                         "Qtd_Total": qtd,
                                         "Qtd_Enviada": 0,
                                         "Saldo": qtd
-                                    }
+                                    })
 
-                                    itens_extraidos.append(item_mapeado)
-
-                                except:
-                                    continue
-
+                # =========================================================
+                # SALVAMENTO CENTRALIZADO NO BANCO DE DADOS
+                # =========================================================
                 if itens_extraidos:
-
                     df_novos = pd.DataFrame(itens_extraidos)
-
-                    try:
-                        df_banco = pd.read_excel(BANCO_DADOS)
-
-                        if not df_banco.empty and "OP" in df_banco.columns:
-                            df_banco = df_banco[
-                                df_banco["OP"].astype(str) != str(numero_op).strip()
-                            ]
-
-                        df_final = pd.concat([df_banco, df_novos], ignore_index=True)
-
-                    except:
+                    if os.path.exists(BANCO_DADOS):
+                        try:
+                            df_banco = pd.read_excel(BANCO_DADOS)
+                            if not df_banco.empty and "OP" in df_banco.columns:
+                                # Remove registros antigos dessa OP para não duplicar se reimportar
+                                df_banco = df_banco[df_banco["OP"].astype(str) != str(numero_op).strip()]
+                            df_final = pd.concat([df_banco, df_novos], ignore_index=True)
+                        except:
+                            df_final = df_novos
+                    else:
                         df_final = df_novos
 
                     df_final.to_excel(BANCO_DADOS, index=False)
-
-                    st.success(f"OP {numero_op} importada com {len(df_novos)} itens.")
-
+                    st.success(f"Sucesso! {len(df_novos)} itens integrados à base de saldos para a OP {numero_op}.")
+                    st.dataframe(df_novos, use_container_width=True)
                 else:
-                    st.error("Nenhum item encontrado no PDF.")
+                    st.error("Não foi possível extrair dados estruturados deste modelo de arquivo. Valide o alinhamento de texto.")
 
 # ============================================================
-# ABA 2
+# ABA 2: EMISSÃO DE ROMANEIO
 # ============================================================
 
 with aba2:
@@ -321,38 +391,28 @@ with aba2:
     st.subheader("Ordem de Separação e Carregamento Parcial")
 
     if os.path.exists(BANCO_DADOS):
-
         try:
             df_banco = pd.read_excel(BANCO_DADOS)
         except:
             df_banco = pd.DataFrame()
 
         if not df_banco.empty and "OP" in df_banco.columns:
-
             ops_disponiveis = df_banco["OP"].unique()
+            op_selecionada = st.selectbox("Selecione a OP para Saída de Materiais:", ops_disponiveis)
 
-            op_selecionada = st.selectbox("Selecione a OP:", ops_disponiveis)
-
-            itens_op = df_banco[
-                df_banco["OP"].astype(str) == str(op_selecionada)
-            ].copy()
+            itens_op = df_banco[df_banco["OP"].astype(str) == str(op_selecionada)].copy()
 
             col_cab1, col_cab2 = st.columns(2)
-
             with col_cab1:
                 digitado_por = st.text_input("Digitado por:", value="JOICE")
-
             with col_cab2:
                 endereco_obra = st.text_input("Endereço da Obra:")
 
             st.write("---")
-
             lista_liberacao = []
 
             for index, row in itens_op.iterrows():
-
                 col1, col2, col3 = st.columns(3)
-
                 codigo_item = row.get('Tipo_Cod', 'COD')
                 descricao_item = row.get('Descricao', 'Sem Descrição')
                 medida_item = row.get('Medida', 'Não informada')
@@ -361,10 +421,8 @@ with aba2:
 
                 with col1:
                     st.write(f"**{codigo_item}** — {descricao_item} ({medida_item})")
-
                 with col2:
-                    st.write(f"Total: {qtd_total_item} | Saldo: {saldo_item}")
-
+                    st.write(f"Total: {qtd_total_item} | Saldo: **{saldo_item}**")
                 with col3:
                     qtd_saida = st.number_input(
                         f"Qtd saída {index}",
@@ -373,7 +431,6 @@ with aba2:
                         value=0,
                         key=f"saida_{index}"
                     )
-
                     if qtd_saida > 0:
                         lista_liberacao.append({
                             "index": index,
@@ -382,75 +439,45 @@ with aba2:
                         })
 
             if len(lista_liberacao) > 0:
-
                 st.markdown("---")
-                st.write("### Itens Selecionados")
+                st.write("### Itens Selecionados para este Romaneio")
 
                 dados_resumo = [
                     {
-                        "Código": lib['item'].get('Tipo_Cod', 'COD'),
-                        "Descrição": lib['item'].get('Descricao', ''),
+                        "Código/Perfil": lib['item'].get('Tipo_Cod', 'COD'),
+                        "Descrição Técnica": lib['item'].get('Descricao', ''),
+                        "Dimensão/Corte": lib['item'].get('Medida', ''),
                         "Quantidade": lib['qtd_saida']
                     }
                     for lib in lista_liberacao
                 ]
-
                 st.table(dados_resumo)
 
                 if st.button("Executar Baixa e Emitir Romaneio"):
-
                     df_banco_atual = pd.read_excel(BANCO_DADOS)
 
                     for lib in lista_liberacao:
-
                         idx = lib["index"]
-
-                        df_banco_atual.at[idx, "Qtd_Enviada"] = (
-                            int(df_banco_atual.at[idx, "Qtd_Enviada"])
-                            + lib["qtd_saida"]
-                        )
-
-                        df_banco_atual.at[idx, "Saldo"] = (
-                            int(df_banco_atual.at[idx, "Saldo"])
-                            - lib["qtd_saida"]
-                        )
+                        df_banco_atual.at[idx, "Qtd_Enviada"] = int(df_banco_atual.at[idx, "Qtd_Enviada"]) + lib["qtd_saida"]
+                        df_banco_atual.at[idx, "Saldo"] = int(df_banco_atual.at[idx, "Saldo"]) - lib["qtd_saida"]
 
                     df_banco_atual.to_excel(BANCO_DADOS, index=False)
 
-                    # ============================================================
-                    # GERAR ROMANEIO EXCEL
-                    # ============================================================
-
+                    # Gerador openpyxl
                     wb = Workbook()
                     ws = wb.active
                     ws.sheet_view.showGridLines = False
                     ws.title = "Romaneio"
 
                     bd_fina = Side(style='thin', color="000000")
-                    borda_padrao = Border(
-                        left=bd_fina, right=bd_fina,
-                        top=bd_fina, bottom=bd_fina
-                    )
-
-                    fill_cabecalho = PatternFill(
-                        start_color="F2F2F2",
-                        end_color="F2F2F2",
-                        fill_type="solid"
-                    )
-
-                    # ========================================================
-                    # COLUNAS
-                    # ========================================================
+                    borda_padrao = Border(left=bd_fina, right=bd_fina, top=bd_fina, bottom=bd_fina)
+                    fill_cabecalho = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
                     ws.column_dimensions['A'].width = 12
                     ws.column_dimensions['B'].width = 18
                     ws.column_dimensions['C'].width = 45
                     ws.column_dimensions['D'].width = 18
                     ws.column_dimensions['E'].width = 25
-
-                    # ========================================================
-                    # CABEÇALHO SUPERIOR
-                    # ========================================================
 
                     ws.merge_cells("A1:B3")
                     ws.merge_cells("C1:D3")
@@ -459,10 +486,6 @@ with aba2:
                     ws["C1"] = "Comprovante de Entrega de Material"
                     ws["C1"].font = Font(name="Arial", size=14, bold=True)
                     ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
-
-                    # ========================================================
-                    # LOGOS
-                    # ========================================================
 
                     if os.path.exists("Imagem1.png"):
                         img1 = OpenpyxlImage("Imagem1.png")
@@ -476,60 +499,28 @@ with aba2:
                         img2.height = 45
                         ws.add_image(img2, "E1")
 
-                    # ========================================================
-                    # DADOS CABEÇALHO
-                    # ========================================================
-
-                    primeiro_item = lista_liberacao[0]['item']
+                    primeiro_item = lista_liberacao['item']
 
                     ws["A4"] = "Nº:"
                     ws["B4"] = str(op_selecionada)
-
                     ws["D4"] = "DIGITADO POR"
                     ws["E4"] = digitado_por.upper()
-
                     ws["A5"] = "Data:"
                     ws["B5"] = datetime.now().strftime('%d/%m/%Y %H:%M')
-
                     ws["A6"] = "Obra:"
                     ws["B6"] = str(primeiro_item.get('Obra', '')).upper()
-
                     ws["A7"] = "Nº Projeto:"
                     ws["B7"] = str(primeiro_item.get('Projeto', ''))
-
                     ws["A8"] = "Endereço da Obra:"
                     ws["B8"] = endereco_obra.upper()
 
-                    # ========================================================
-                    # FORMATAÇÃO CABEÇALHO
-                    # ========================================================
-
                     for r in range(4, 9):
-
-                        if r == 4:
-                            ws.merge_cells("B4:C4")
-                        else:
-                            ws.merge_cells(
-                                start_row=r, start_column=2,
-                                end_row=r, end_column=3
-                            )
-
+                        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
                         ws.cell(row=r, column=1).font = Font(name="Arial", size=10, bold=True)
-
                         for c in range(1, 6):
                             ws.cell(row=r, column=c).border = borda_padrao
 
-                    # ========================================================
-                    # TÍTULOS TABELA
-                    # ========================================================
-
-                    titulos = [
-                        "QTD",
-                        "COD",
-                        "DESCRIÇÃO",
-                        "CONF. INTERNA",
-                        "OBSERVAÇÕES"
-                    ]
+                    titulos = ["QTD", "COD / PERFIL", "DESCRIÇÃO TÉCNICA", "MEDIDA / CORTE", "OBSERVAÇÕES"]
 
                     for col_num, titulo in enumerate(titulos, 1):
                         celula = ws.cell(row=10, column=col_num)
@@ -539,136 +530,74 @@ with aba2:
                         celula.alignment = Alignment(horizontal="center", vertical="center")
                         celula.border = borda_padrao
 
-                    # ========================================================
-                    # ITENS
-                    # ========================================================
-
                     linha_excel = 11
-
                     for lib in lista_liberacao:
-
                         item = lib["item"]
-
                         ws.cell(linha_excel, 1, lib["qtd_saida"])
                         ws.cell(linha_excel, 2, item["Tipo_Cod"])
                         ws.cell(linha_excel, 3, item["Descricao"])
                         ws.cell(linha_excel, 4, item["Medida"])
-
                         for col in range(1, 6):
                             ws.cell(linha_excel, col).border = borda_padrao
-
                         linha_excel += 1
 
-                    # ============================================================
-                    # ASSINATURAS
-                    # ============================================================
-
                     linha_ass = linha_excel + 3
-
-                    # Aviso superior
-                    ws.merge_cells(
-                        start_row=linha_ass, start_column=1,
-                        end_row=linha_ass, end_column=5
-                    )
-                    ws.cell(row=linha_ass, column=1).value = (
-                        "Favor conferir todos os termos descritos neste romaneio antes de assinar. "
-                        "Verificar se os ACM estão em perfeito estado."
-                    )
+                    ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
+                    ws.cell(row=linha_ass, column=1).value = "Favor conferir todos os termos descritos neste romaneio antes de assinar. Verificar se os materiais estão em perfeito estado."
                     ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
 
-                    # Segunda linha de aviso
                     linha_ass += 1
-                    ws.merge_cells(
-                        start_row=linha_ass, start_column=1,
-                        end_row=linha_ass, end_column=5
-                    )
-                    ws.cell(row=linha_ass, column=1).value = (
-                        "Não serão aceitas reclamações após recebimento da mercadoria."
-                    )
+                    ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
+                    ws.cell(row=linha_ass, column=1).value = "Não serão aceitas reclamações após recebimento da mercadoria."
                     ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
 
-                    # Texto de recebimento
                     linha_ass += 3
-                    ws.merge_cells(
-                        start_row=linha_ass, start_column=1,
-                        end_row=linha_ass, end_column=5
-                    )
-                    ws.cell(row=linha_ass, column=1).value = (
-                        "Recebi da Fachadas Passold as mercadorias acima relacionadas."
-                    )
+                    ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
+                    ws.cell(row=linha_ass, column=1).value = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
                     ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=10)
 
-                    # Conferência interna
                     linha_ass += 2
                     ws.cell(row=linha_ass, column=1).value = "Conferência Interna:"
                     ws.cell(row=linha_ass, column=1).font = Font(bold=True)
-
                     for col in range(1, 4):
-                        ws.cell(row=linha_ass + 1, column=col).border = Border(
-                            bottom=Side(style='thin')
-                        )
+                        ws.cell(row=linha_ass + 1, column=col).border = Border(bottom=Side(style='thin'))
                     ws.cell(row=linha_ass + 1, column=4).value = "____/____/______"
 
-                    # Motorista
                     linha_motorista = linha_ass + 4
                     for col in range(1, 4):
-                        ws.cell(row=linha_motorista, column=col).border = Border(
-                            bottom=Side(style='thin')
-                        )
+                        ws.cell(row=linha_motorista, column=col).border = Border(bottom=Side(style='thin'))
                     ws.cell(row=linha_motorista, column=4).value = "____/____/______"
                     ws.cell(row=linha_motorista + 1, column=1).value = "Nome Motorista (Data)"
                     ws.cell(row=linha_motorista + 1, column=1).font = Font(bold=True)
 
-                    # Recebedor na obra
                     linha_receb = linha_motorista + 4
                     for col in range(1, 4):
-                        ws.cell(row=linha_receb, column=col).border = Border(
-                            bottom=Side(style='thin')
-                        )
+                        ws.cell(row=linha_receb, column=col).border = Border(bottom=Side(style='thin'))
                     ws.cell(row=linha_receb, column=4).value = "____/____/______"
                     ws.cell(row=linha_receb + 1, column=1).value = "Nome Recebedor Obra (Data)"
                     ws.cell(row=linha_receb + 1, column=1).font = Font(bold=True)
-
-                    # Líder
-                    linha_lider = linha_receb + 4
-                    for col in range(1, 4):
-                        ws.cell(row=linha_lider, column=col).border = Border(
-                            bottom=Side(style='thin')
-                        )
-                    ws.cell(row=linha_lider, column=4).value = "____/____/______"
-                    ws.cell(row=linha_lider + 1, column=1).value = "Nome Líder (Data)"
-                    ws.cell(row=linha_lider + 1, column=1).font = Font(bold=True)
-
-                    # ============================================================
-                    # SALVAR E DISPONIBILIZAR
-                    # ============================================================
 
                     buffer = BytesIO()
                     wb.save(buffer)
                     buffer.seek(0)
 
-                    st.success("Romaneio gerado com sucesso.")
-
+                    st.success("Romaneio gerado com sucesso!")
                     st.download_button(
-                        label="⬇️ Baixar Romaneio",
+                        label="⬇️ Baixar Romaneio do Carregamento",
                         data=buffer,
                         file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
-                        mime=(
-                            "application/vnd.openxmlformats-"
-                            "officedocument.spreadsheetml.sheet"
-                        )
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+                    st.rerun()
 
 # ============================================================
-# ABA 3
+# APA 3: PAINEL GERAL DE SALDOS
 # ============================================================
 
 with aba3:
-
-    st.subheader("Painel Geral de Saldos")
+    st.subheader("Painel Geral de Monitoramento de Saldos")
 
     if os.path.exists(BANCO_DADOS):
-
         try:
             df_ver = pd.read_excel(BANCO_DADOS)
             st.dataframe(df_ver, use_container_width=True)
