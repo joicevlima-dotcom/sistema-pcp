@@ -138,6 +138,7 @@ aba_google = planilha.worksheet("ops")
 # FUNÇÕES GOOGLE SHEETS
 # ============================================================
 
+@st.cache_data(ttl=30)
 def carregar_banco():
     try:
         dados = aba_google.get_all_records()
