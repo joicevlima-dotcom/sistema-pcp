@@ -171,6 +171,8 @@ def salvar_banco(df):
             df.values.tolist()
         )
 
+        carregar_banco.clear()
+
     except Exception as e:
         st.error(f"Erro ao salvar Google Sheets: {e}")
 
