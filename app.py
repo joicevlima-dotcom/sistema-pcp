@@ -269,13 +269,18 @@ with aba1:
                     st.info("Detectado: Relatório de Padrão de Cortes. Processando barras e ângulos...")
                     itens_extraidos = []
 
+                    # Estrutura real do PDF SmartCEM:
+                    # "Classe/ID: SN"  → próxima linha = "MM-045 Barras: 4 x 6200" (perfil = 1ª palavra)
+                    # linha seguinte   → "CONTRAMARCO CENTRAL Nível Otimização: 1" (desc = antes de "Nível")
+                    # linhas de corte  → "2 5990 45/90 CETOR JA4 - L"
+                    # "<<< Qtde total do item" / "Qtde Barra" → diagrama visual, ignorar
+                    # Dentro do diagrama pode aparecer "MM-045 Barras: 16 x 6000" (novo perfil)
+
                     perfil_atual = "N/D"
                     descricao_atual = "N/D"
-                    pular_para_codigo = False
-                    pular_para_descricao = False
-                    ignorar_bloco = False
+                    estado = "AGUARDANDO"
 
-                    padrao_linha_corte = re.compile(r'^(\d+)\s+([0-9\.]+)\s+([0-9/\$]+)')
+                    padrao_linha_corte = re.compile(r'^(\d+)\s+(\d+)\s+(\d+(?:[/]\d+)?)')
 
                     with pdfplumber.open(arquivo_pdf) as pdf:
                         for pagina in pdf.pages:
@@ -288,61 +293,86 @@ with aba1:
                                 if not linha:
                                     continue
 
+                                # Rodapé — ignorar sempre
+                                if "SmartCEM" in linha or "Atenção:" in linha or "Alumisoft" in linha:
+                                    continue
+                                # Cabeçalho de página — ignorar
+                                if linha.startswith("Obra:") and "Calculada em:" in linha:
+                                    continue
+
+                                # Início de novo bloco de perfil
                                 if "Classe/ID:" in linha:
-                                    ignorar_bloco = False
-                                    pular_para_codigo = True
+                                    estado = "LER_PERFIL_PROX"
                                     continue
 
-                                if ("Qtde Barra" in linha or "Barra Útil:" in linha or
-                                    "Qtde total do item" in linha or "Barras:" in linha or "barras:" in linha.lower()):
-                                    ignorar_bloco = True
+                                # Fim dos cortes → entra no diagrama
+                                if "Qtde total do item" in linha or "Qtde Barra" in linha or "Barra Útil:" in linha:
+                                    estado = "IGNORAR_DIAGRAMA"
                                     continue
 
-                                if ignorar_bloco:
+                                if estado == "IGNORAR_DIAGRAMA":
+                                    # Dentro do diagrama pode aparecer novo perfil: "MM-045 Barras: 16 x 6000"
+                                    if re.match(r'^[A-Z]{2,3}-\d{3}', linha):
+                                        perfil_atual = linha.split()[0].upper()
+                                        estado = "LER_DESCRICAO"
                                     continue
 
-                                if pular_para_codigo:
+                                if estado == "LER_PERFIL_PROX":
                                     partes_p = linha.split()
                                     if partes_p:
                                         perfil_atual = partes_p[0].upper()
-                                    pular_para_codigo = False
-                                    pular_para_descricao = True
+                                    estado = "LER_DESCRICAO"
                                     continue
 
-                                if pular_para_descricao:
+                                if estado == "LER_DESCRICAO":
+                                    # "CONTRAMARCO CENTRAL Nível Otimização: 1" → pega só antes de "Nível"
+                                    if "Nível Otimização" in linha:
+                                        descricao_atual = linha.split("Nível Otimização")[0].strip()
+                                        estado = "LER_CORTES"
+                                        continue
+                                    if any(x in linha for x in ["Trat.:", "Part.:", "Nº Barras"]):
+                                        continue
+                                    if linha.startswith("Qtde") and "Tam" in linha:
+                                        estado = "LER_CORTES"
+                                        continue
                                     descricao_atual = linha
-                                    pular_para_descricao = False
+                                    estado = "LER_CORTES"
                                     continue
 
-                                partes_linha = linha.split()
-                                if len(partes_linha) == 1 and re.match(r'^[A-Z]{2,3}\d{3,4}$', partes_linha[0]):
-                                    perfil_atual = partes_linha[0].upper()
-                                    continue
-
-                                match_corte = padrao_linha_corte.match(linha)
-                                if match_corte:
-                                    qtd = int(match_corte.group(1))
-                                    tam = int(float(match_corte.group(2)))
-                                    corte_tipo = match_corte.group(3).replace('$', '')
-
-                                    if tam in (6000, 6400):
+                                if estado == "LER_CORTES":
+                                    if any(x in linha for x in ["Trat.:", "Part.:", "Nº Barras", "Nível Otimização"]):
+                                        continue
+                                    if linha.startswith("Qtde") and "Tam" in linha:
+                                        continue
+                                    # Linhas de continuação como "Empreendimentos": ignorar
+                                    if not re.match(r'^\d', linha):
                                         continue
 
-                                    desc_final = f"PERFIL: {descricao_atual}"
-                                    if descricao_manual:
-                                        desc_final += f" ({descricao_manual.upper()})"
+                                    match_corte = padrao_linha_corte.match(linha)
+                                    if match_corte:
+                                        qtd = int(match_corte.group(1))
+                                        tam = int(match_corte.group(2))
+                                        corte_tipo = match_corte.group(3).replace('$', '')
 
-                                    itens_extraidos.append({
-                                        "OP": str(numero_op).strip(),
-                                        "Obra": obra_input.upper().strip(),
-                                        "Projeto": projeto_input.strip(),
-                                        "Tipo_Cod": perfil_atual,
-                                        "Descricao": desc_final,
-                                        "Medida": f"{tam} mm ({corte_tipo}º)",
-                                        "Qtd_Total": qtd,
-                                        "Qtd_Enviada": 0,
-                                        "Saldo": qtd
-                                    })
+                                        # Ignora barras de matéria-prima (comprimento cheio)
+                                        if tam in (6000, 6200, 6400):
+                                            continue
+
+                                        desc_final = f"{perfil_atual} - {descricao_atual}"
+                                        if descricao_manual:
+                                            desc_final += f" ({descricao_manual.upper()})"
+
+                                        itens_extraidos.append({
+                                            "OP": str(numero_op).strip(),
+                                            "Obra": obra_input.upper().strip(),
+                                            "Projeto": projeto_input.strip(),
+                                            "Tipo_Cod": perfil_atual,
+                                            "Descricao": desc_final,
+                                            "Medida": f"{tam} mm ({corte_tipo}°)",
+                                            "Qtd_Total": qtd,
+                                            "Qtd_Enviada": 0,
+                                            "Saldo": qtd
+                                        })
 
                 # =========================================================
                 # MODELO 2: LISTA DE ITENS DA OBRA (Tipologias/Esquadrias prontas)
@@ -483,11 +513,7 @@ with aba2:
             lista_liberacao = []
 
             for index, row in itens_op.iterrows():
-                # ============================================================
-                # BOTÃO DE EXCLUSÃO — 4 colunas: descrição | saldo | qtd saída | excluir
-                # ============================================================
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-
+                col1, col2, col3 = st.columns(3)
                 codigo_item = row.get('Tipo_Cod', 'COD')
                 descricao_item = row.get('Descricao', 'Sem Descrição')
                 medida_item = row.get('Medida', 'Não informada')
@@ -512,13 +538,6 @@ with aba2:
                             "item": row,
                             "qtd_saida": qtd_saida
                         })
-                with col4:
-                    if st.button("🗑️", key=f"del_{index}", help="Excluir este item"):
-                        df_banco_del = pd.read_excel(BANCO_DADOS)
-                        df_banco_del = df_banco_del.drop(index=index).reset_index(drop=True)
-                        df_banco_del.to_excel(BANCO_DADOS, index=False)
-                        st.success("Item excluído com sucesso!")
-                        st.rerun()
 
             if len(lista_liberacao) > 0:
                 st.markdown("---")
@@ -581,6 +600,7 @@ with aba2:
                         img2.height = 45
                         ws.add_image(img2, "E1")
 
+                    # BUG CORRIGIDO: era lista_liberacao['item'] (índice string em lista)
                     primeiro_item = lista_liberacao[0]['item']
 
                     ws["A4"] = "Nº:"
