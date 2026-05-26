@@ -304,7 +304,6 @@ with aba1:
                                 if pular_para_codigo:
                                     partes_p = linha.split()
                                     if partes_p:
-                                        # BUG CORRIGIDO: era partes_p.upper(), faltava índice [0]
                                         perfil_atual = partes_p[0].upper()
                                     pular_para_codigo = False
                                     pular_para_descricao = True
@@ -316,7 +315,6 @@ with aba1:
                                     continue
 
                                 partes_linha = linha.split()
-                                # BUG CORRIGIDO: era partes_linha sem índice [0]
                                 if len(partes_linha) == 1 and re.match(r'^[A-Z]{2,3}\d{3,4}$', partes_linha[0]):
                                     perfil_atual = partes_linha[0].upper()
                                     continue
@@ -485,7 +483,11 @@ with aba2:
             lista_liberacao = []
 
             for index, row in itens_op.iterrows():
-                col1, col2, col3 = st.columns(3)
+                # ============================================================
+                # BOTÃO DE EXCLUSÃO — 4 colunas: descrição | saldo | qtd saída | excluir
+                # ============================================================
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+
                 codigo_item = row.get('Tipo_Cod', 'COD')
                 descricao_item = row.get('Descricao', 'Sem Descrição')
                 medida_item = row.get('Medida', 'Não informada')
@@ -510,6 +512,13 @@ with aba2:
                             "item": row,
                             "qtd_saida": qtd_saida
                         })
+                with col4:
+                    if st.button("🗑️", key=f"del_{index}", help="Excluir este item"):
+                        df_banco_del = pd.read_excel(BANCO_DADOS)
+                        df_banco_del = df_banco_del.drop(index=index).reset_index(drop=True)
+                        df_banco_del.to_excel(BANCO_DADOS, index=False)
+                        st.success("Item excluído com sucesso!")
+                        st.rerun()
 
             if len(lista_liberacao) > 0:
                 st.markdown("---")
@@ -572,7 +581,6 @@ with aba2:
                         img2.height = 45
                         ws.add_image(img2, "E1")
 
-                    # BUG CORRIGIDO: era lista_liberacao['item'] (índice string em lista)
                     primeiro_item = lista_liberacao[0]['item']
 
                     ws["A4"] = "Nº:"
