@@ -124,8 +124,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-credenciais = Credentials.from_service_account_file(
-    "credenciais_google.json",
+credenciais = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
     scopes=SCOPES
 )
 
