@@ -3,6 +3,9 @@ import pandas as pd
 import pdfplumber
 import os
 import re
+import gspread
+
+from google.oauth2.service_account import Credentials
 
 from io import BytesIO
 from datetime import datetime
@@ -112,12 +115,64 @@ st.markdown("---")
 
 BANCO_DADOS = "banco_ops.xlsx"
 
-if not os.path.exists(BANCO_DADOS):
-    colunas = [
-        "OP", "Obra", "Projeto", "Tipo_Cod",
-        "Descricao", "Medida", "Qtd_Total", "Qtd_Enviada", "Saldo"
-    ]
-    pd.DataFrame(columns=colunas).to_excel(BANCO_DADOS, index=False)
+# ============================================================
+# GOOGLE SHEETS
+# ============================================================
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+credenciais = Credentials.from_service_account_file(
+    "credenciais_google.json",
+    scopes=SCOPES
+)
+
+client = gspread.authorize(credenciais)
+
+planilha = client.open("banco_ops")
+aba_google = planilha.worksheet("ops")
+
+# ============================================================
+# FUNÇÕES GOOGLE SHEETS
+# ============================================================
+
+def carregar_banco():
+    try:
+        dados = aba_google.get_all_records()
+
+        if dados:
+            return pd.DataFrame(dados)
+
+        return pd.DataFrame(columns=[
+            "OP", "Obra", "Projeto", "Tipo_Cod",
+            "Descricao", "Medida",
+            "Qtd_Total", "Qtd_Enviada", "Saldo"
+        ])
+
+    except Exception as e:
+        st.error(f"Erro ao carregar Google Sheets: {e}")
+
+        return pd.DataFrame(columns=[
+            "OP", "Obra", "Projeto", "Tipo_Cod",
+            "Descricao", "Medida",
+            "Qtd_Total", "Qtd_Enviada", "Saldo"
+        ])
+
+
+def salvar_banco(df):
+    try:
+        aba_google.clear()
+
+        aba_google.update(
+            [df.columns.values.tolist()] +
+            df.values.tolist()
+        )
+
+    except Exception as e:
+        st.error(f"Erro ao salvar Google Sheets: {e}")
+
 
 # ============================================================
 # TABS
@@ -210,13 +265,13 @@ with aba1:
                 df_novo = pd.DataFrame([novo_item])
 
                 try:
-                    if os.path.exists(BANCO_DADOS):
-                        df_existente = pd.read_excel(BANCO_DADOS)
+                    df_existente = carregar_banco()
+                    if not df_existente.empty:
                         df_final = pd.concat([df_existente, df_novo], ignore_index=True)
                     else:
                         df_final = df_novo
 
-                    df_final.to_excel(BANCO_DADOS, index=False)
+                    salvar_banco(df_final)
 
                     st.success("Item manual incluído com sucesso!")
                     st.dataframe(df_novo, use_container_width=True)
@@ -451,18 +506,15 @@ with aba1:
                 # =========================================================
                 if itens_extraidos:
                     df_novos = pd.DataFrame(itens_extraidos)
-                    if os.path.exists(BANCO_DADOS):
-                        try:
-                            df_banco = pd.read_excel(BANCO_DADOS)
-                            if not df_banco.empty and "OP" in df_banco.columns:
-                                df_banco = df_banco[df_banco["OP"].astype(str) != str(numero_op).strip()]
-                            df_final = pd.concat([df_banco, df_novos], ignore_index=True)
-                        except:
-                            df_final = df_novos
-                    else:
+                    try:
+                        df_banco = carregar_banco()
+                        if not df_banco.empty and "OP" in df_banco.columns:
+                            df_banco = df_banco[df_banco["OP"].astype(str) != str(numero_op).strip()]
+                        df_final = pd.concat([df_banco, df_novos], ignore_index=True)
+                    except:
                         df_final = df_novos
 
-                    df_final.to_excel(BANCO_DADOS, index=False)
+                    salvar_banco(df_final)
                     st.success(f"Sucesso! {len(df_novos)} itens integrados à base de saldos para a OP {numero_op}.")
                     st.dataframe(df_novos, use_container_width=True)
                 else:
@@ -476,210 +528,208 @@ with aba2:
 
     st.subheader("Ordem de Separação e Carregamento Parcial")
 
-    if os.path.exists(BANCO_DADOS):
-        try:
-            df_banco = pd.read_excel(BANCO_DADOS)
-        except:
-            df_banco = pd.DataFrame()
+    df_banco = carregar_banco()
 
-        if not df_banco.empty and "OP" in df_banco.columns:
-            ops_disponiveis = df_banco["OP"].unique()
-            op_selecionada = st.selectbox("Selecione a OP para Saída de Materiais:", ops_disponiveis)
+    if not df_banco.empty and "OP" in df_banco.columns:
+        ops_disponiveis = df_banco["OP"].unique()
+        op_selecionada = st.selectbox("Selecione a OP para Saída de Materiais:", ops_disponiveis)
 
-            itens_op = df_banco[df_banco["OP"].astype(str) == str(op_selecionada)].copy()
+        itens_op = df_banco[df_banco["OP"].astype(str) == str(op_selecionada)].copy()
 
-            col_cab1, col_cab2 = st.columns(2)
-            with col_cab1:
-                digitado_por = st.text_input("Digitado por:", value="JOICE")
-            with col_cab2:
-                endereco_obra = st.text_input("Endereço da Obra:")
+        col_cab1, col_cab2 = st.columns(2)
+        with col_cab1:
+            digitado_por = st.text_input("Digitado por:", value="JOICE")
+        with col_cab2:
+            endereco_obra = st.text_input("Endereço da Obra:")
 
-            st.write("---")
-            lista_liberacao = []
+        st.write("---")
+        lista_liberacao = []
 
-            for index, row in itens_op.iterrows():
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-                codigo_item = row.get('Tipo_Cod', 'COD')
-                descricao_item = row.get('Descricao', 'Sem Descrição')
-                medida_item = row.get('Medida', 'Não informada')
-                saldo_item = row.get('Saldo', 0)
-                qtd_total_item = row.get('Qtd_Total', 0)
+        for index, row in itens_op.iterrows():
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+            codigo_item = row.get('Tipo_Cod', 'COD')
+            descricao_item = row.get('Descricao', 'Sem Descrição')
+            medida_item = row.get('Medida', 'Não informada')
+            saldo_item = row.get('Saldo', 0)
+            qtd_total_item = row.get('Qtd_Total', 0)
 
-                with col1:
-                    st.write(f"**{codigo_item}** — {descricao_item} ({medida_item})")
-                with col2:
-                    st.write(f"Total: {qtd_total_item} | Saldo: **{saldo_item}**")
-                with col3:
-                    qtd_saida = st.number_input(
-                        f"Qtd saída {index}",
-                        min_value=0,
-                        max_value=int(saldo_item),
-                        value=0,
-                        key=f"saida_{index}"
-                    )
-                    if qtd_saida > 0:
-                        lista_liberacao.append({
-                            "index": index,
-                            "item": row,
-                            "qtd_saida": qtd_saida
-                        })
-                with col4:
-                    if st.button("🗑️", key=f"del_{index}", help="Excluir este item"):
-                        df_banco_del = pd.read_excel(BANCO_DADOS)
-                        df_banco_del = df_banco_del.drop(index=index).reset_index(drop=True)
-                        df_banco_del.to_excel(BANCO_DADOS, index=False)
-                        st.rerun()
+            with col1:
+                st.write(f"**{codigo_item}** — {descricao_item} ({medida_item})")
+            with col2:
+                st.write(f"Total: {qtd_total_item} | Saldo: **{saldo_item}**")
+            with col3:
+                qtd_saida = st.number_input(
+                    f"Qtd saída {index}",
+                    min_value=0,
+                    max_value=int(saldo_item),
+                    value=0,
+                    key=f"saida_{index}"
+                )
+                if qtd_saida > 0:
+                    lista_liberacao.append({
+                        "index": index,
+                        "item": row,
+                        "qtd_saida": qtd_saida
+                    })
+            with col4:
+                if st.button("🗑️", key=f"del_{index}", help="Excluir este item"):
+                    df_banco_del = carregar_banco()
+                    df_banco_del = df_banco_del.drop(index=index).reset_index(drop=True)
+                    salvar_banco(df_banco_del)
+                    st.rerun()
 
-            if len(lista_liberacao) > 0:
-                st.markdown("---")
-                st.write("### Itens Selecionados para este Romaneio")
+        if len(lista_liberacao) > 0:
+            st.markdown("---")
+            st.write("### Itens Selecionados para este Romaneio")
 
-                dados_resumo = [
-                    {
-                        "Código/Perfil": lib['item'].get('Tipo_Cod', 'COD'),
-                        "Descrição Técnica": lib['item'].get('Descricao', ''),
-                        "Dimensão/Corte": lib['item'].get('Medida', ''),
-                        "Quantidade": lib['qtd_saida']
-                    }
-                    for lib in lista_liberacao
-                ]
-                st.table(dados_resumo)
+            dados_resumo = [
+                {
+                    "Código/Perfil": lib['item'].get('Tipo_Cod', 'COD'),
+                    "Descrição Técnica": lib['item'].get('Descricao', ''),
+                    "Dimensão/Corte": lib['item'].get('Medida', ''),
+                    "Quantidade": lib['qtd_saida']
+                }
+                for lib in lista_liberacao
+            ]
+            st.table(dados_resumo)
 
-                if st.button("Executar Baixa e Emitir Romaneio"):
-                    df_banco_atual = pd.read_excel(BANCO_DADOS)
+            if st.button("Executar Baixa e Emitir Romaneio"):
+                df_banco_atual = carregar_banco()
 
-                    for lib in lista_liberacao:
-                        idx = lib["index"]
-                        df_banco_atual.at[idx, "Qtd_Enviada"] = int(df_banco_atual.at[idx, "Qtd_Enviada"]) + lib["qtd_saida"]
-                        df_banco_atual.at[idx, "Saldo"] = int(df_banco_atual.at[idx, "Saldo"]) - lib["qtd_saida"]
+                for lib in lista_liberacao:
+                    idx = lib["index"]
+                    df_banco_atual.at[idx, "Qtd_Enviada"] = int(df_banco_atual.at[idx, "Qtd_Enviada"]) + lib["qtd_saida"]
+                    df_banco_atual.at[idx, "Saldo"] = int(df_banco_atual.at[idx, "Saldo"]) - lib["qtd_saida"]
 
-                    df_banco_atual.to_excel(BANCO_DADOS, index=False)
+                salvar_banco(df_banco_atual)
 
-                    # Gerador openpyxl
-                    wb = Workbook()
-                    ws = wb.active
-                    ws.sheet_view.showGridLines = False
-                    ws.title = "Romaneio"
+                # Gerador openpyxl
+                wb = Workbook()
+                ws = wb.active
+                ws.sheet_view.showGridLines = False
+                ws.title = "Romaneio"
 
-                    bd_fina = Side(style='thin', color="000000")
-                    borda_padrao = Border(left=bd_fina, right=bd_fina, top=bd_fina, bottom=bd_fina)
-                    fill_cabecalho = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                bd_fina = Side(style='thin', color="000000")
+                borda_padrao = Border(left=bd_fina, right=bd_fina, top=bd_fina, bottom=bd_fina)
+                fill_cabecalho = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
-                    ws.column_dimensions['A'].width = 12
-                    ws.column_dimensions['B'].width = 18
-                    ws.column_dimensions['C'].width = 45
-                    ws.column_dimensions['D'].width = 18
-                    ws.column_dimensions['E'].width = 25
+                ws.column_dimensions['A'].width = 12
+                ws.column_dimensions['B'].width = 18
+                ws.column_dimensions['C'].width = 45
+                ws.column_dimensions['D'].width = 18
+                ws.column_dimensions['E'].width = 25
 
-                    ws.merge_cells("A1:B3")
-                    ws.merge_cells("C1:D3")
-                    ws.merge_cells("E1:E3")
+                ws.merge_cells("A1:B3")
+                ws.merge_cells("C1:D3")
+                ws.merge_cells("E1:E3")
 
-                    ws["C1"] = "Comprovante de Entrega de Material"
-                    ws["C1"].font = Font(name="Arial", size=14, bold=True)
-                    ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
+                ws["C1"] = "Comprovante de Entrega de Material"
+                ws["C1"].font = Font(name="Arial", size=14, bold=True)
+                ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
 
-                    if os.path.exists("Imagem1.png"):
-                        img1 = OpenpyxlImage("Imagem1.png")
-                        img1.width = 110
-                        img1.height = 45
-                        ws.add_image(img1, "A1")
+                if os.path.exists("Imagem1.png"):
+                    img1 = OpenpyxlImage("Imagem1.png")
+                    img1.width = 110
+                    img1.height = 45
+                    ws.add_image(img1, "A1")
 
-                    if os.path.exists("Imagem2.png"):
-                        img2 = OpenpyxlImage("Imagem2.png")
-                        img2.width = 110
-                        img2.height = 45
-                        ws.add_image(img2, "E1")
+                if os.path.exists("Imagem2.png"):
+                    img2 = OpenpyxlImage("Imagem2.png")
+                    img2.width = 110
+                    img2.height = 45
+                    ws.add_image(img2, "E1")
 
-                    primeiro_item = lista_liberacao[0]['item']
+                primeiro_item = lista_liberacao[0]['item']
 
-                    ws["A4"] = "Nº:"
-                    ws["B4"] = str(op_selecionada)
-                    ws["D4"] = "DIGITADO POR"
-                    ws["E4"] = digitado_por.upper()
-                    ws["A5"] = "Data:"
-                    ws["B5"] = datetime.now().strftime('%d/%m/%Y %H:%M')
-                    ws["A6"] = "Obra:"
-                    ws["B6"] = str(primeiro_item.get('Obra', '')).upper()
-                    ws["A7"] = "Nº Projeto:"
-                    ws["B7"] = str(primeiro_item.get('Projeto', ''))
-                    ws["A8"] = "Endereço da Obra:"
-                    ws["B8"] = endereco_obra.upper()
+                ws["A4"] = "Nº:"
+                ws["B4"] = str(op_selecionada)
+                ws["D4"] = "DIGITADO POR"
+                ws["E4"] = digitado_por.upper()
+                ws["A5"] = "Data:"
+                ws["B5"] = datetime.now().strftime('%d/%m/%Y %H:%M')
+                ws["A6"] = "Obra:"
+                ws["B6"] = str(primeiro_item.get('Obra', '')).upper()
+                ws["A7"] = "Nº Projeto:"
+                ws["B7"] = str(primeiro_item.get('Projeto', ''))
+                ws["A8"] = "Endereço da Obra:"
+                ws["B8"] = endereco_obra.upper()
 
-                    for r in range(4, 9):
-                        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
-                        ws.cell(row=r, column=1).font = Font(name="Arial", size=10, bold=True)
-                        for c in range(1, 6):
-                            ws.cell(row=r, column=c).border = borda_padrao
+                for r in range(4, 9):
+                    ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
+                    ws.cell(row=r, column=1).font = Font(name="Arial", size=10, bold=True)
+                    for c in range(1, 6):
+                        ws.cell(row=r, column=c).border = borda_padrao
 
-                    titulos = ["QTD", "COD / PERFIL", "DESCRIÇÃO TÉCNICA", "MEDIDA / CORTE", "OBSERVAÇÕES"]
+                titulos = ["QTD", "COD / PERFIL", "DESCRIÇÃO TÉCNICA", "MEDIDA / CORTE", "OBSERVAÇÕES"]
 
-                    for col_num, titulo in enumerate(titulos, 1):
-                        celula = ws.cell(row=10, column=col_num)
-                        celula.value = titulo
-                        celula.font = Font(bold=True)
-                        celula.fill = fill_cabecalho
-                        celula.alignment = Alignment(horizontal="center", vertical="center")
-                        celula.border = borda_padrao
+                for col_num, titulo in enumerate(titulos, 1):
+                    celula = ws.cell(row=10, column=col_num)
+                    celula.value = titulo
+                    celula.font = Font(bold=True)
+                    celula.fill = fill_cabecalho
+                    celula.alignment = Alignment(horizontal="center", vertical="center")
+                    celula.border = borda_padrao
 
-                    linha_excel = 11
-                    for lib in lista_liberacao:
-                        item = lib["item"]
-                        ws.cell(linha_excel, 1, lib["qtd_saida"])
-                        ws.cell(linha_excel, 2, item["Tipo_Cod"])
-                        ws.cell(linha_excel, 3, item["Descricao"])
-                        ws.cell(linha_excel, 4, item["Medida"])
-                        for col in range(1, 6):
-                            ws.cell(linha_excel, col).border = borda_padrao
-                        linha_excel += 1
+                linha_excel = 11
+                for lib in lista_liberacao:
+                    item = lib["item"]
+                    ws.cell(linha_excel, 1, lib["qtd_saida"])
+                    ws.cell(linha_excel, 2, item["Tipo_Cod"])
+                    ws.cell(linha_excel, 3, item["Descricao"])
+                    ws.cell(linha_excel, 4, item["Medida"])
+                    for col in range(1, 6):
+                        ws.cell(linha_excel, col).border = borda_padrao
+                    linha_excel += 1
 
-                    linha_ass = linha_excel + 3
-                    ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
-                    ws.cell(row=linha_ass, column=1).value = "Favor conferir todos os termos descritos neste romaneio antes de assinar. Verificar se os materiais estão em perfeito estado."
-                    ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
+                linha_ass = linha_excel + 3
+                ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
+                ws.cell(row=linha_ass, column=1).value = "Favor conferir todos os termos descritos neste romaneio antes de assinar. Verificar se os materiais estão em perfeito estado."
+                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
 
-                    linha_ass += 1
-                    ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
-                    ws.cell(row=linha_ass, column=1).value = "Não serão aceitas reclamações após recebimento da mercadoria."
-                    ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
+                linha_ass += 1
+                ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
+                ws.cell(row=linha_ass, column=1).value = "Não serão aceitas reclamações após recebimento da mercadoria."
+                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
 
-                    linha_ass += 3
-                    ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
-                    ws.cell(row=linha_ass, column=1).value = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
-                    ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=10)
+                linha_ass += 3
+                ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
+                ws.cell(row=linha_ass, column=1).value = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
+                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=10)
 
-                    linha_ass += 2
-                    ws.cell(row=linha_ass, column=1).value = "Conferência Interna:"
-                    ws.cell(row=linha_ass, column=1).font = Font(bold=True)
-                    for col in range(1, 4):
-                        ws.cell(row=linha_ass + 1, column=col).border = Border(bottom=Side(style='thin'))
-                    ws.cell(row=linha_ass + 1, column=4).value = "____/____/______"
+                linha_ass += 2
+                ws.cell(row=linha_ass, column=1).value = "Conferência Interna:"
+                ws.cell(row=linha_ass, column=1).font = Font(bold=True)
+                for col in range(1, 4):
+                    ws.cell(row=linha_ass + 1, column=col).border = Border(bottom=Side(style='thin'))
+                ws.cell(row=linha_ass + 1, column=4).value = "____/____/______"
 
-                    linha_motorista = linha_ass + 4
-                    for col in range(1, 4):
-                        ws.cell(row=linha_motorista, column=col).border = Border(bottom=Side(style='thin'))
-                    ws.cell(row=linha_motorista, column=4).value = "____/____/______"
-                    ws.cell(row=linha_motorista + 1, column=1).value = "Nome Motorista (Data)"
-                    ws.cell(row=linha_motorista + 1, column=1).font = Font(bold=True)
+                linha_motorista = linha_ass + 4
+                for col in range(1, 4):
+                    ws.cell(row=linha_motorista, column=col).border = Border(bottom=Side(style='thin'))
+                ws.cell(row=linha_motorista, column=4).value = "____/____/______"
+                ws.cell(row=linha_motorista + 1, column=1).value = "Nome Motorista (Data)"
+                ws.cell(row=linha_motorista + 1, column=1).font = Font(bold=True)
 
-                    linha_receb = linha_motorista + 4
-                    for col in range(1, 4):
-                        ws.cell(row=linha_receb, column=col).border = Border(bottom=Side(style='thin'))
-                    ws.cell(row=linha_receb, column=4).value = "____/____/______"
-                    ws.cell(row=linha_receb + 1, column=1).value = "Nome Recebedor Obra (Data)"
-                    ws.cell(row=linha_receb + 1, column=1).font = Font(bold=True)
+                linha_receb = linha_motorista + 4
+                for col in range(1, 4):
+                    ws.cell(row=linha_receb, column=col).border = Border(bottom=Side(style='thin'))
+                ws.cell(row=linha_receb, column=4).value = "____/____/______"
+                ws.cell(row=linha_receb + 1, column=1).value = "Nome Recebedor Obra (Data)"
+                ws.cell(row=linha_receb + 1, column=1).font = Font(bold=True)
 
-                    buffer = BytesIO()
-                    wb.save(buffer)
-                    buffer.seek(0)
+                buffer = BytesIO()
+                wb.save(buffer)
+                buffer.seek(0)
 
-                    st.success("Romaneio gerado com sucesso! Clique no botão abaixo para baixar.")
-                    st.download_button(
-                        label="⬇️ Baixar Romaneio do Carregamento",
-                        data=buffer,
-                        file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                st.success("Romaneio gerado com sucesso! Clique no botão abaixo para baixar.")
+                st.download_button(
+                    label="⬇️ Baixar Romaneio do Carregamento",
+                    data=buffer,
+                    file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+    else:
+        st.info("Nenhuma OP encontrada na base de dados.")
 
 # ============================================================
 # ABA 3: PAINEL GERAL DE SALDOS
@@ -688,9 +738,11 @@ with aba2:
 with aba3:
     st.subheader("Painel Geral de Monitoramento de Saldos")
 
-    if os.path.exists(BANCO_DADOS):
-        try:
-            df_ver = pd.read_excel(BANCO_DADOS)
+    try:
+        df_ver = carregar_banco()
+        if not df_ver.empty:
             st.dataframe(df_ver, use_container_width=True)
-        except:
-            st.error("Erro ao abrir banco.")
+        else:
+            st.info("Nenhum dado encontrado na base.")
+    except Exception as e:
+        st.error(f"Erro ao carregar painel: {e}")
