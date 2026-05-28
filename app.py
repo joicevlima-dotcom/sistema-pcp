@@ -133,6 +133,8 @@ client = gspread.authorize(credenciais)
 
 planilha = client.open("banco_ops")
 aba_google = planilha.worksheet("ops")
+aba_materiais = planilha.worksheet("obras_materiais")
+aba_historico = planilha.worksheet("historico_materiais")
 
 # ============================================================
 # FUNÇÕES GOOGLE SHEETS
@@ -177,14 +179,62 @@ def salvar_banco(df):
         st.error(f"Erro ao salvar Google Sheets: {e}")
 
 
+@st.cache_data(ttl=30)
+def carregar_materiais():
+    try:
+        dados = aba_materiais.get_all_records()
+
+        if dados:
+            return pd.DataFrame(dados)
+
+        return pd.DataFrame(columns=[
+            "Obra",
+            "Item",
+            "Descricao",
+            "Unidade",
+            "Qtd_Total",
+            "Qtd_Enviada",
+            "Saldo"
+        ])
+
+    except Exception as e:
+        st.error(f"Erro ao carregar materiais: {e}")
+
+        return pd.DataFrame(columns=[
+            "Obra",
+            "Item",
+            "Descricao",
+            "Unidade",
+            "Qtd_Total",
+            "Qtd_Enviada",
+            "Saldo"
+            "Etapa"
+        ])
+
+
+def salvar_materiais(df):
+    try:
+        aba_materiais.clear()
+
+        aba_materiais.update(
+            [df.columns.values.tolist()] +
+            df.values.tolist()
+        )
+
+        carregar_materiais.clear()
+
+    except Exception as e:
+        st.error(f"Erro ao salvar materiais: {e}")
+
 # ============================================================
 # TABS
 # ============================================================
 
-aba1, aba2, aba3 = st.tabs([
+aba1, aba2, aba3, aba4 = st.tabs([
     "Importação de O.P. / Cortes / Itens",
     "Emissão de Romaneio Parcial",
-    "Painel Geral de Saldos"
+    "Painel Geral de Saldos",
+    "Acompanhamento Lista de Materiais"
 ])
 
 # ============================================================
@@ -659,7 +709,7 @@ with aba2:
 
                 for r in range(4, 9):
                     ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
-                    ws.cell(row=r, column=1).font = Font(name="Arial", size=10, bold=True)
+                    ws.cell(row=r, column=1).font = Font(name="Arial", size=14, bold=True)
                     for c in range(1, 6):
                         ws.cell(row=r, column=c).border = borda_padrao
 
@@ -668,7 +718,7 @@ with aba2:
                 for col_num, titulo in enumerate(titulos, 1):
                     celula = ws.cell(row=10, column=col_num)
                     celula.value = titulo
-                    celula.font = Font(bold=True)
+                    celula.font = Font(name="Arial", size=14, bold=True)
                     celula.fill = fill_cabecalho
                     celula.alignment = Alignment(horizontal="center", vertical="center")
                     celula.border = borda_padrao
@@ -680,8 +730,11 @@ with aba2:
                     ws.cell(linha_excel, 2, item["Tipo_Cod"])
                     ws.cell(linha_excel, 3, item["Descricao"])
                     ws.cell(linha_excel, 4, item["Medida"])
+                    # CORRIGIDO: loop de formatação das células de cada linha
                     for col in range(1, 6):
+                        ws.cell(linha_excel, col).font = Font(name="Arial", size=14)
                         ws.cell(linha_excel, col).border = borda_padrao
+                        ws.cell(linha_excel, col).alignment = Alignment(wrap_text=True, vertical="center")
                     linha_excel += 1
 
                 linha_ass = linha_excel + 3
@@ -697,7 +750,7 @@ with aba2:
                 linha_ass += 3
                 ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
                 ws.cell(row=linha_ass, column=1).value = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
-                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=10)
+                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=14)
 
                 linha_ass += 2
                 ws.cell(row=linha_ass, column=1).value = "Conferência Interna:"
@@ -719,6 +772,14 @@ with aba2:
                 ws.cell(row=linha_receb, column=4).value = "____/____/______"
                 ws.cell(row=linha_receb + 1, column=1).value = "Nome Recebedor Obra (Data)"
                 ws.cell(row=linha_receb + 1, column=1).font = Font(bold=True)
+
+                # CORRIGIDO: bloco do engenheiro recolocado na indentação correta
+                linha_eng = linha_receb + 4
+                for col in range(1, 4):
+                    ws.cell(row=linha_eng, column=col).border = Border(bottom=Side(style='thin'))
+                ws.cell(row=linha_eng, column=4).value = "____/____/______"
+                ws.cell(row=linha_eng + 1, column=1).value = "Engenheiro / Responsável Obra"
+                ws.cell(row=linha_eng + 1, column=1).font = Font(bold=True, size=12)
 
                 buffer = BytesIO()
                 wb.save(buffer)
@@ -749,3 +810,31 @@ with aba3:
             st.info("Nenhum dado encontrado na base.")
     except Exception as e:
         st.error(f"Erro ao carregar painel: {e}")
+
+# ============================================================
+# ABA 4: ACOMPANHAMENTO LISTA DE MATERIAIS
+# ============================================================
+
+with aba4:
+
+    st.subheader("Acompanhamento de Materiais das Obras")
+
+    df_materiais = carregar_materiais()
+
+    if not df_materiais.empty:
+
+        obras = df_materiais["Obra"].unique()
+
+        obra_selecionada = st.selectbox(
+            "Selecione a obra:",
+            obras
+        )
+
+        df_obra = df_materiais[
+            df_materiais["Obra"] == obra_selecionada
+        ]
+
+        st.dataframe(df_obra, use_container_width=True)
+
+    else:
+        st.info("Nenhuma lista de materiais cadastrada.")
