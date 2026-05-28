@@ -131,7 +131,7 @@ credenciais = Credentials.from_service_account_info(
 
 client = gspread.authorize(credenciais)
 
-planilha = client.open("banco_ops")
+planilha = client.open_by_key("1ABC123XYZ456")
 aba_google = planilha.worksheet("ops")
 aba_materiais = planilha.worksheet("obras_materiais")
 aba_historico = planilha.worksheet("historico_materiais")
