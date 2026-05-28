@@ -230,11 +230,12 @@ def salvar_materiais(df):
 # TABS
 # ============================================================
 
-aba1, aba2, aba3, aba4 = st.tabs([
+aba1, aba2, aba3, aba4, aba5 = st.tabs([
     "Importação de O.P. / Cortes / Itens",
     "Emissão de Romaneio Parcial",
     "Painel Geral de Saldos",
-    "Acompanhamento Lista de Materiais"
+    "Acompanhamento de Componentes",
+    "Romaneio de Componentes"
 ])
 
 # ============================================================
@@ -817,24 +818,259 @@ with aba3:
 
 with aba4:
 
-    st.subheader("Acompanhamento de Materiais das Obras")
+    st.subheader("Acompanhamento Geral de Componentes")
 
     df_materiais = carregar_materiais()
 
     if not df_materiais.empty:
 
-        obras = df_materiais["Obra"].unique()
+        obras = sorted(df_materiais["Obra"].dropna().unique())
 
         obra_selecionada = st.selectbox(
             "Selecione a obra:",
-            obras
+            obras,
+            key="obra_componentes"
         )
+
+        st.markdown("---")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            arquivo_excel = st.file_uploader(
+                "Importar Lista de Componentes",
+                type=["xlsx"],
+                key="upload_componentes"
+            )
+
+        with col2:
+
+            if "modo_manual_componentes" not in st.session_state:
+                st.session_state.modo_manual_componentes = False
+
+            if st.button("➕ Inserir Item Manualmente"):
+
+                st.session_state.modo_manual_componentes = (
+                    not st.session_state.modo_manual_componentes
+                )
+
+        # ====================================================
+        # FORMULÁRIO MANUAL
+        # ====================================================
+
+        if st.session_state.modo_manual_componentes:
+
+            st.markdown("---")
+
+            c1, c2, c3, c4, c5 = st.columns(5)
+
+            with c1:
+                item_manual = st.text_input("Item")
+
+            with c2:
+                descricao_manual = st.text_input("Descrição")
+
+            with c3:
+                unidade_manual = st.text_input("Unidade")
+
+            with c4:
+                etapa_manual = st.text_input("Etapa")
+
+            with c5:
+                qtd_manual = st.number_input(
+                    "Quantidade",
+                    min_value=1,
+                    value=1
+                )
+
+            if st.button("💾 Salvar Componente"):
+
+                novo_item = {
+                    "Obra": obra_selecionada,
+                    "Item": item_manual,
+                    "Descricao": descricao_manual.upper(),
+                    "Unidade": unidade_manual.upper(),
+                    "Qtd_Total": qtd_manual,
+                    "Qtd_Enviada": 0,
+                    "Saldo": qtd_manual,
+                    "Etapa": etapa_manual.upper(),
+                    "Material": ""
+                }
+
+                df_novo = pd.DataFrame([novo_item])
+
+                df_final = pd.concat(
+                    [df_materiais, df_novo],
+                    ignore_index=True
+                )
+
+                salvar_materiais(df_final)
+
+                st.success("Componente salvo com sucesso!")
+
+                st.rerun()
+
+        # ====================================================
+        # LISTA DA OBRA
+        # ====================================================
+
+        st.markdown("---")
 
         df_obra = df_materiais[
             df_materiais["Obra"] == obra_selecionada
         ]
 
-        st.dataframe(df_obra, use_container_width=True)
+        st.dataframe(
+            df_obra,
+            use_container_width=True
+        )
 
     else:
-        st.info("Nenhuma lista de materiais cadastrada.")
+
+        st.info("Nenhuma lista de componentes cadastrada.")
+with aba5:
+
+    st.subheader("Emissão de Romaneio de Componentes")
+
+    df_materiais = carregar_materiais()
+
+    if not df_materiais.empty:
+
+        obras = sorted(
+            df_materiais["Obra"].dropna().unique()
+        )
+
+        obra_saida = st.selectbox(
+            "Selecione a obra:",
+            obras,
+            key="obra_saida_componentes"
+        )
+
+        df_obra = df_materiais[
+            df_materiais["Obra"] == obra_saida
+        ].copy()
+
+        st.markdown("---")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            digitado_por_comp = st.text_input(
+                "Digitado por:",
+                value=st.session_state.usuario
+            )
+
+        with col2:
+            endereco_comp = st.text_input(
+                "Endereço da Obra:"
+            )
+
+        lista_saida_componentes = []
+
+        st.markdown("### Componentes Disponíveis")
+
+        for index, row in df_obra.iterrows():
+
+            col_a, col_b, col_c = st.columns([5, 2, 2])
+
+            with col_a:
+
+                st.write(
+                    f"""
+                    **ITEM {row['Item']}**
+                    - {row['Descricao']}
+                    - ETAPA: {row.get('Etapa', '')}
+                    - MATERIAL: {row.get('Material', '')}
+                    """
+                )
+
+            with col_b:
+
+                st.write(
+                    f"""
+                    TOTAL: {row['Qtd_Total']}
+
+                    ENVIADO: {row['Qtd_Enviada']}
+
+                    SALDO: {row['Saldo']}
+                    """
+                )
+
+            with col_c:
+
+                qtd_saida = st.number_input(
+                    f"Saída item {index}",
+                    min_value=0,
+                    max_value=int(row["Saldo"]),
+                    value=0,
+                    key=f"comp_saida_{index}"
+                )
+
+                if qtd_saida > 0:
+
+                    lista_saida_componentes.append({
+                        "index": index,
+                        "item": row,
+                        "qtd_saida": qtd_saida
+                    })
+
+        # ====================================================
+        # RESUMO
+        # ====================================================
+
+        if len(lista_saida_componentes) > 0:
+
+            st.markdown("---")
+
+            st.write("### Resumo do Romaneio")
+
+            resumo = []
+
+            for item in lista_saida_componentes:
+
+                resumo.append({
+
+                    "Item": item["item"]["Item"],
+
+                    "Descrição": item["item"]["Descricao"],
+
+                    "Quantidade": item["qtd_saida"]
+                })
+
+            st.table(pd.DataFrame(resumo))
+
+            # ====================================================
+            # BOTÃO EMITIR
+            # ====================================================
+
+            if st.button("🚛 Emitir Romaneio Componentes"):
+
+                df_atual = carregar_materiais()
+
+                for item_saida in lista_saida_componentes:
+
+                    idx = item_saida["index"]
+
+                    qtd = item_saida["qtd_saida"]
+
+                    df_atual.at[idx, "Qtd_Enviada"] = (
+                        int(df_atual.at[idx, "Qtd_Enviada"]) + qtd
+                    )
+
+                    df_atual.at[idx, "Saldo"] = (
+                        int(df_atual.at[idx, "Saldo"]) - qtd
+                    )
+
+                salvar_materiais(df_atual)
+
+                st.success(
+                    "Romaneio de componentes emitido com sucesso!"
+                )
+
+                st.rerun()
+
+    else:
+
+        st.info(
+            "Nenhuma lista de componentes cadastrada."
+        )
