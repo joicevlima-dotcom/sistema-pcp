@@ -4,6 +4,7 @@ import pdfplumber
 import os
 import re
 import gspread
+import io
 
 from google.oauth2.service_account import Credentials
 
@@ -655,7 +656,7 @@ with aba2:
             ]
             st.table(dados_resumo)
 
-            if st.button("Executar Baixa e Emitir Romaneio"):
+if st.button("Executar Baixa e Emitir Romaneio"):
                 df_banco_atual = carregar_banco()
 
                 for lib in lista_liberacao:
@@ -666,7 +667,7 @@ with aba2:
                 salvar_banco(df_banco_atual)
 
                 # ============================================================
-                # INÍCIO DO GERADOR OPENPYXL
+                # INÍCIO DO GERADOR OPENPYXL (Alinhado dentro do botão)
                 # ============================================================
                 wb = Workbook()
                 ws = wb.active
@@ -697,18 +698,29 @@ with aba2:
                 ws["C1"].font = Font(name="Arial", size=14, bold=True)
                 ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
 
+                from PIL import Image as PILImage
+
                 if os.path.exists("Imagem1.png"):
-                    img1 = OpenpyxlImage("Imagem1.png")
-                    img1.width = 110
-                    img1.height = 45
-                    ws.add_image(img1, "A1")
+                    try:
+                        img1_pil = PILImage.open("Imagem1.png")
+                        img1 = OpenpyxlImage(img1_pil)
+                        img1.width = 110
+                        img1.height = 45
+                        ws.add_image(img1, "A1")
+                    except Exception as e:
+                        st.warning(f"Erro ao carregar Imagem1: {e}")
 
                 if os.path.exists("Imagem2.png"):
-                    img2 = OpenpyxlImage("Imagem2.png")
-                    img2.width = 110
-                    img2.height = 45
-                    ws.add_image(img2, "E1")
+                    try:
+                        img2_pil = PILImage.open("Imagem2.png")
+                        img2 = OpenpyxlImage(img2_pil)
+                        img2.width = 110
+                        img2.height = 45
+                        ws.add_image(img2, "E1")
+                    except Exception as e:
+                        st.warning(f"Erro ao carregar Imagem2: {e}")
 
+                # Criando a variável que estava sumida por erro de recuo
                 primeiro_item = lista_liberacao[0]['item']
 
                 # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (MAIÚSCULO)
@@ -763,53 +775,34 @@ with aba2:
                     linha_excel += 1
 
                 # ============================================================
-                # CONTROLE CORRIGIDO DO DESENHO (BUSCA DIRETO DA CHAVE DO STREAMLIT)
-                # ============================================================
-# ============================================================
-                # CONTROLE DEFINITIVO DO DESENHO (SALVANDO ARQUIVO TEMPORÁRIO)
+                # CONTROLE DO DESENHO (CORRIGIDO E RECUPERADO DA SESSÃO)
                 # ============================================================
                 deslocamento = 0 
-                
-                # Resgata o arquivo direto do state do componente de upload
                 imagem_desenho = st.session_state.get("foto_diretor")
                 
                 if imagem_desenho is not None:
                     try:
-                        from PIL import Image as PILImage
-                        import io
-                        
-                        # Pega os bytes puros
                         dados_imagem = imagem_desenho.getvalue()
                         
                         if dados_imagem and len(dados_imagem) > 0:
-                            # Converte em imagem usando o Pillow
                             imagem_bytes = io.BytesIO(dados_imagem)
                             imagem_convertida = PILImage.open(imagem_bytes)
                             
-                            # SALVA EM UM ARQUIVO DE VERDADE NO DISCO (Evita o bug de BytesIO)
                             caminho_temporario = "temp_desenho.png"
                             imagem_convertida.save(caminho_temporario)
                             
-                            # O openpyxl lê o arquivo físico perfeitamente!
                             img_perfil = OpenpyxlImage(caminho_temporario)
                             img_perfil.width = 250   
                             img_perfil.height = 150
                             
-                            # Posiciona logo abaixo da tabela de itens
                             linha_foto = max(13, linha_excel + 1)
                             ws.add_image(img_perfil, f"C{linha_foto}")
                             
                             deslocamento = 9 
-                            
-                            # Opcional: Remove o arquivo temporário depois de colocar no Excel por segurança
-                            # (O openpyxl guarda os dados na memória ao dar o add_image)
-                            if os.path.exists(caminho_temporario):
-                                os.remove(caminho_temporario)
-                                
                     except Exception as e:
                         st.warning(f"Não foi possível carregar o desenho anexado: {e}")
 
-                # Ajuste de layout caso a tabela de itens passe do limite
+                # Ajuste de layout dinâmico baseado nos itens da tabela
                 base_linha = max(0, linha_excel - 12)
                 
                 # Definição das posições dinâmicas das assinaturas
