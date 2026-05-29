@@ -663,17 +663,22 @@ with aba2:
                 ws.sheet_view.showGridLines = False
                 ws.title = "Romaneio"
 
+                # Configuração de paginação automática para impressão/PDF
+                ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+                ws.oddFooter.right.text = "Página &P de &N"
+
                 bd_fina = Side(style='thin', color="000000")
                 borda_padrao = Border(left=bd_fina, right=bd_fina, top=bd_fina, bottom=bd_fina)
                 fill_cabecalho = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
+                # Larguras das colunas baseadas no seu modelo de excelência
                 ws.column_dimensions['A'].width = 15
                 ws.column_dimensions['B'].width = 22
                 ws.column_dimensions['C'].width = 48
                 ws.column_dimensions['D'].width = 22
                 ws.column_dimensions['E'].width = 25
 
-                # LINHAS 1, 2 E 3 - MANTÉM (Sem alterações)
+                # LINHAS 1, 2 E 3 - CABEÇALHO (Título e Imagens)
                 ws.merge_cells("A1:B3")
                 ws.merge_cells("C1:D3")
                 ws.merge_cells("E1:E3")
@@ -696,7 +701,7 @@ with aba2:
 
                 primeiro_item = lista_liberacao[0]['item']
 
-                # LINHAS 4, 5, 6, 7 E 8 - ALTERADO PARA TAM 12
+                # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (TAMANHO 12)
                 ws["A4"] = "Nº:"
                 ws["B4"] = str(op_selecionada)
                 ws["D4"] = "DIGITADO POR"
@@ -718,7 +723,7 @@ with aba2:
                         if c > 1:
                             ws.cell(row=r, column=c).font = Font(name="Arial", size=12)
 
-                # LINHA 10 - TITULOS - ALTERADO PARA TAM 12
+                # LINHA 10 - TÍTULOS DA TABELA (TAMANHO 12)
                 titulos = ["QTD", "COD / PERFIL", "DESCRIÇÃO TÉCNICA", "MEDIDA / CORTE", "OBSERVAÇÕES"]
 
                 for col_num, titulo in enumerate(titulos, 1):
@@ -729,7 +734,7 @@ with aba2:
                     celula.alignment = Alignment(horizontal="center", vertical="center")
                     celula.border = borda_padrao
 
-                # LINHA 11 - DADOS - ALTERADO PARA TAM 12
+                # LINHA 11 - ITENS E DADOS DO CARREGAMENTO (TAMANHO 12 + CENTRALIZAÇÃO)
                 linha_excel = 11
                 for lib in lista_liberacao:
                     item = lib["item"]
@@ -741,41 +746,42 @@ with aba2:
                     for col in range(1, 6):
                         ws.cell(linha_excel, col).font = Font(name="Arial", size=12)
                         ws.cell(linha_excel, col).border = borda_padrao
+                        
+                        # Alinhamento sob medida: Descrição à esquerda, o resto todo centralizado
                         if col == 3:
                             ws.cell(linha_excel, col).alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
                         else:
                             ws.cell(linha_excel, col).alignment = Alignment(horizontal="center", vertical="center")
                     linha_excel += 1
 
-                # LINHA 15 - ALTERADO PARA TEXTO DESEJADO E TAM 14
+                # LINHAS FIXAS DE TERMOS E CONDIÇÕES (TAMANHO 14)
                 ws.merge_cells("A15:E15")
                 ws["A15"] = "Favor conferir todos os termos descritos neste romaneio antes de assinar."
                 ws["A15"].font = Font(name="Arial", size=14, italic=True)
 
-                # LINHA 16 - ALTERADO PARA TEXTO DESEJADO E TAM 14
                 ws.merge_cells("A16:E16")
                 ws["A16"] = "Verificar se os materiais estão em perfeito estado."
                 ws["A16"].font = Font(name="Arial", size=14, italic=True)
 
-                # LINHA 17 - ALTERADO PARA TEXTO DESEJADO E TAM 14
                 ws.merge_cells("A17:E17")
                 ws["A17"] = "Não serão aceitas reclamações após recebimento da mercadoria."
                 ws["A17"].font = Font(name="Arial", size=14, italic=True)
 
-                # LINHA 20 - ALTERADO PARA TEXTO DESEJADO E TAM 14
                 ws.merge_cells("A20:E20")
                 ws["A20"] = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
                 ws["A20"].font = Font(name="Arial", size=14)
 
-                # LINHA 24 - ALTERADO PARA CONFERÊNCIA INTERNA E TAM 12
-                ws["A24"] = "Conferência Interna:"
-                ws["A24"].font = Font(name="Arial", size=12, bold=True)
+                # SEÇÃO DE ASSINATURAS MILIMÉTRICAS (Linha em cima, Texto embaixo)
+                
+                # LINHA 24 - CONFERÊNCIA INTERNA
                 for col in range(1, 4):
-                    ws.cell(row=25, column=col).border = Border(bottom=Side(style='thin'))
-                ws["D25"] = "____/____/______"
-                ws["D25"].font = Font(name="Arial", size=12)
+                    ws.cell(row=24, column=col).border = Border(bottom=Side(style='thin'))
+                ws["D24"] = "____/____/______"
+                ws["D24"].font = Font(name="Arial", size=12)
+                ws["A25"] = "Conferência Interna:"
+                ws["A25"].font = Font(name="Arial", size=12, bold=True)
 
-                # LINHA 27 - ALTERADO PARA NOME MOTORISTA (DATA) E TAM 12
+                # LINHA 27 - NOME MOTORISTA
                 for col in range(1, 4):
                     ws.cell(row=27, column=col).border = Border(bottom=Side(style='thin'))
                 ws["D27"] = "____/____/______"
@@ -783,7 +789,7 @@ with aba2:
                 ws["A28"] = "Nome Motorista (Data)"
                 ws["A28"].font = Font(name="Arial", size=12, bold=True)
 
-                # LINHA 31 - ALTERADO PARA NOME RECEBEDOR OBRA (DATA) E TAM 12
+                # LINHA 31 - NOME RECEBEDOR OBRA
                 for col in range(1, 4):
                     ws.cell(row=31, column=col).border = Border(bottom=Side(style='thin'))
                 ws["D31"] = "____/____/______"
@@ -791,7 +797,7 @@ with aba2:
                 ws["A32"] = "Nome Recebedor Obra (Data)"
                 ws["A32"].font = Font(name="Arial", size=12, bold=True)
 
-                # LINHA 35 - ALTERADO PARA ENGENHEIRO / RESPONSÁVEL OBRA E TAM 12
+                # LINHA 35 - ENGENHEIRO / RESPONSÁVEL OBRA
                 for col in range(1, 4):
                     ws.cell(row=35, column=col).border = Border(bottom=Side(style='thin'))
                 ws["D35"] = "____/____/______"
@@ -799,7 +805,7 @@ with aba2:
                 ws["A36"] = "Engenheiro / Responsável Obra"
                 ws["A36"].font = Font(name="Arial", size=12, bold=True)
 
-                # SALVAMENTO DO BUFFER
+                # PROCESSAMENTO DO BUFFER E DOWNLOAD NO STREAMLIT
                 buffer = BytesIO()
                 wb.save(buffer)
                 buffer.seek(0)
@@ -811,7 +817,6 @@ with aba2:
                     file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-
 # ============================================================
 # ABA 4: ACOMPANHAMENTO LISTA DE MATERIAIS
 # ============================================================
