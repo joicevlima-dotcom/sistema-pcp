@@ -774,31 +774,44 @@ if st.button("Executar Baixa e Emitir Romaneio"):
                             ws.cell(linha_excel, col).alignment = Alignment(horizontal="center", vertical="center")
                     linha_excel += 1
 
-                # ============================================================
-                # CONTROLE DO DESENHO (CORRIGIDO E RECUPERADO DA SESSÃO)
+                # CONTROLE DEFINITIVO DO DESENHO (SALVANDO ARQUIVO TEMPORÁRIO)
                 # ============================================================
                 deslocamento = 0 
+                
+                # Resgata o arquivo direto do state do componente de upload
                 imagem_desenho = st.session_state.get("foto_diretor")
                 
                 if imagem_desenho is not None:
                     try:
+                        from PIL import Image as PILImage
+                        import io
+                        
+                        # Pega os bytes puros
                         dados_imagem = imagem_desenho.getvalue()
                         
                         if dados_imagem and len(dados_imagem) > 0:
+                            # Converte em imagem usando o Pillow
                             imagem_bytes = io.BytesIO(dados_imagem)
                             imagem_convertida = PILImage.open(imagem_bytes)
                             
+                            # Salva o arquivo temporário no disco
                             caminho_temporario = "temp_desenho.png"
                             imagem_convertida.save(caminho_temporario)
                             
+                            # O openpyxl lê o arquivo físico perfeito!
                             img_perfil = OpenpyxlImage(caminho_temporario)
-                            img_perfil.width = 250   
-                            img_perfil.height = 150
                             
+                            # AJUSTE PARA O CHEFE ENXERGAR: Imagem bem maior!
+                            img_perfil.width = 648   
+                            img_perfil.height = 201
+                            
+                            # Posiciona logo abaixo da tabela de itens (na coluna B ou C para centralizar)
                             linha_foto = max(13, linha_excel + 1)
-                            ws.add_image(img_perfil, f"C{linha_foto}")
+                            ws.add_image(img_perfil, f"B{linha_foto}") # Mudei para a coluna B para centralizar a imagem grandona
                             
-                            deslocamento = 9 
+                            # Aumentamos o deslocamento para 15 linhas para dar espaço para o fotão!
+                            deslocamento = 12 
+                                
                     except Exception as e:
                         st.warning(f"Não foi possível carregar o desenho anexado: {e}")
 
