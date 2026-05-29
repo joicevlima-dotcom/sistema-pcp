@@ -584,17 +584,24 @@ with aba2:
 
     df_banco = carregar_banco()
 
+    # Inicializa a variável como None para evitar o erro NameError no gerador openpyxl
+    imagem_desenho = None
+
     if not df_banco.empty and "OP" in df_banco.columns:
         ops_disponiveis = df_banco["OP"].unique()
         op_selecionada = st.selectbox("Selecione a OP para Saída de Materiais:", ops_disponiveis)
 
         itens_op = df_banco[df_banco["OP"].astype(str) == str(op_selecionada)].copy()
 
-        col_cab1, col_cab2 = st.columns(2)
+        # Atualizado: Criando 3 colunas para acomodar o campo de imagem sem poluir a tela
+        col_cab1, col_cab2, col_cab3 = st.columns([1, 2, 2])
         with col_cab1:
             digitado_por = st.text_input("Digitado por:", value="JOICE")
         with col_cab2:
             endereco_obra = st.text_input("Endereço da Obra:")
+        with col_cab3:
+            # Novo campo de upload para o seu Diretor colocar a foto da travessa/perfil
+            imagem_desenho = st.file_uploader("📷 Desenho do Perfil (Opcional):", type=["png", "jpg", "jpeg"])
 
         st.write("---")
         lista_liberacao = []
@@ -603,12 +610,12 @@ with aba2:
             col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
             codigo_item = row.get('Tipo_Cod', 'COD')
             descricao_item = row.get('Descricao', 'Sem Descrição')
-            medida_item = row.get('Medida', 'Não informada')
+            measure_item = row.get('Medida', 'Não informada')
             saldo_item = row.get('Saldo', 0)
             qtd_total_item = row.get('Qtd_Total', 0)
 
             with col1:
-                st.write(f"**{codigo_item}** — {descricao_item} ({medida_item})")
+                st.write(f"**{codigo_item}** — {descricao_item} ({measure_item})")
             with col2:
                 st.write(f"Total: {qtd_total_item} | Saldo: **{saldo_item}**")
             with col3:
@@ -656,7 +663,8 @@ with aba2:
                     df_banco_atual.at[idx, "Saldo"] = int(df_banco_atual.at[idx, "Saldo"]) - lib["qtd_saida"]
 
                 salvar_banco(df_banco_atual)
-
+                
+                # O seu código do "# Gerador openpyxl" que configuramos entra a partir daqui...
              # Gerador openpyxl
                 wb = Workbook()
                 ws = wb.active
@@ -683,7 +691,7 @@ with aba2:
                 ws.merge_cells("C1:D3")
                 ws.merge_cells("E1:E3")
 
-                ws["C1"] = "COMPROVANTE DE ENTREGA DE MATERIAL" # <- AJUSTADO: Título em Maiúsculo
+                ws["C1"] = "COMPROVANTE DE ENTREGA DE MATERIAL"
                 ws["C1"].font = Font(name="Arial", size=14, bold=True)
                 ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -701,7 +709,7 @@ with aba2:
 
                 primeiro_item = lista_liberacao[0]['item']
 
-                # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (AJUSTADO: TUDO EM MAIÚSCULO)
+                # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (TUDO EM MAIÚSCULO)
                 ws["A4"] = "Nº:"
                 ws["B4"] = str(op_selecionada).upper()
                 ws["D4"] = "DIGITADO POR"
@@ -723,7 +731,7 @@ with aba2:
                         if c > 1:
                             ws.cell(row=r, column=c).font = Font(name="Arial", size=12)
 
-                # LINHA 10 - TÍTULOS DA TABELA (TAMANHO 12)
+                # LINHA 10 - TÍTULOS DA TABELA
                 titulos = ["QTD", "COD / PERFIL", "DESCRIÇÃO TÉCNICA", "MEDIDA / CORTE", "OBSERVAÇÕES"]
 
                 for col_num, titulo in enumerate(titulos, 1):
@@ -734,76 +742,109 @@ with aba2:
                     celula.alignment = Alignment(horizontal="center", vertical="center")
                     celula.border = borda_padrao
 
-                # LINHA 11 - ITENS E DADOS DO CARREGAMENTO (TAMANHO 12 + CENTRALIZAÇÃO)
+                # LINHA 11 - ITENS E DADOS DO CARREGAMENTO
                 linha_excel = 11
                 for lib in lista_liberacao:
                     item = lib["item"]
                     ws.cell(linha_excel, 1, lib["qtd_saida"])
-                    ws.cell(linha_excel, 2, str(item["Tipo_Cod"]).upper()) # Garante maiúsculo nos códigos
-                    ws.cell(linha_excel, 3, str(item["Descricao"]).upper()) # Garante maiúsculo nas descrições
-                    ws.cell(linha_excel, 4, str(item["Medida"]).upper())   # Garante maiúsculo nas medidas
+                    ws.cell(linha_excel, 2, str(item["Tipo_Cod"]).upper())
+                    ws.cell(linha_excel, 3, str(item["Descricao"]).upper())
+                    ws.cell(linha_excel, 4, str(item["Medida"]).upper())
                     
                     for col in range(1, 6):
                         ws.cell(linha_excel, col).font = Font(name="Arial", size=12)
                         ws.cell(linha_excel, col).border = borda_padrao
-                        
-                        # Alinhamento sob medida: Descrição à esquerda, o resto todo centralizado
                         if col == 3:
                             ws.cell(linha_excel, col).alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
                         else:
                             ws.cell(linha_excel, col).alignment = Alignment(horizontal="center", vertical="center")
                     linha_excel += 1
 
-                # LINHAS FIXAS DE TERMOS E CONDIÇÕES (TAMANHO 14)
-                ws.merge_cells("A15:E15")
-                ws["A15"] = "Favor conferir todos os termos descritos neste romaneio antes de assinar."
-                ws["A15"].font = Font(name="Arial", size=14, italic=True)
+                # ============================================================
+                # CONTROLE DINÂMICO DO DESENHO E DESLOCAMENTO DO RODAPÉ
+                # ============================================================
+                deslocamento = 0 
+                
+                # Se a variável imagem_desenho existir (vinda da tela), coloca o desenho
+                if 'imagem_desenho' in locals() and imagem_desenho is not None:
+                    try:
+                        img_perfil = OpenpyxlImage(imagem_desenho)
+                        img_perfil.width = 250   # Ajuste do tamanho do desenho do Diretor
+                        img_perfil.height = 150
+                        
+                        # Define a linha do desenho logo após os itens (com uma linha de folga)
+                        linha_foto = max(13, linha_excel + 1)
+                        celula_foto = f"C{linha_foto}"
+                        ws.add_image(img_perfil, celula_foto)
+                        
+                        # Empurra o rodapé 9 linhas para baixo para dar espaço perfeito à foto
+                        deslocamento = 9 
+                    except Exception as e:
+                        st.warning(f"Não foi possível carregar o desenho anexado: {e}")
 
-                ws.merge_cells("A16:E16")
-                ws["A16"] = "Verificar se os materiais estão em perfeito estado."
-                ws["A16"].font = Font(name="Arial", size=14, italic=True)
+                # Se a tabela cresceu além da linha 11, ajustamos a base do rodapé por segurança
+                base_linha = max(0, linha_excel - 12)
+                
+                # Definição das posições finais com os empurrões inteligentes
+                l15 = 15 + deslocamento + base_linha
+                l16 = 16 + deslocamento + base_linha
+                l17 = 17 + deslocamento + base_linha
+                l20 = 20 + deslocamento + base_linha
+                l24 = 24 + deslocamento + base_linha
+                l27 = 27 + deslocamento + base_linha
+                l31 = 31 + deslocamento + base_linha
+                l35 = 35 + deslocamento + base_linha
 
-                ws.merge_cells("A17:E17")
-                ws["A17"] = "Não serão aceitas reclamações após recebimento da mercadoria."
-                ws["A17"].font = Font(name="Arial", size=14, italic=True)
+                # LINHAS DE TERMOS E CONDIÇÕES (TAMANHO 14)
+                ws.merge_cells(f"A{l15}:E{l15}")
+                ws[f"A{l15}"] = "Favor conferir todos os termos descritos neste romaneio antes de assinar."
+                ws[f"A{l15}"].font = Font(name="Arial", size=14, italic=True)
 
-                ws.merge_cells("A20:E20")
-                ws["A20"] = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
-                ws["A20"].font = Font(name="Arial", size=14)
+                ws.merge_cells(f"A{l16}:E{l16}")
+                ws[f"A{l16}"] = "Verificar se os materiais estão em perfeito estado."
+                ws[f"A{l16}"].font = Font(name="Arial", size=14, italic=True)
+
+                ws.merge_cells(f"A{l17}:E{l17}")
+                ws[f"A{l17}"] = "Não serão aceitas reclamações após recebimento da mercadoria."
+                ws[f"A{l17}"].font = Font(name="Arial", size=14, italic=True)
+
+                ws.merge_cells(f"A{l20}:E{l20}")
+                ws[f"A{l20}"] = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
+                ws[f"A{l20}"].font = Font(name="Arial", size=14)
 
                 # SEÇÃO DE ASSINATURAS MILIMÉTRICAS (Linha em cima, Texto embaixo)
                 
-                # LINHA 24 - CONFERÊNCIA INTERNA
+                # CONFERÊNCIA INTERNA
                 for col in range(1, 4):
-                    ws.cell(row=24, column=col).border = Border(bottom=Side(style='thin'))
-                ws["D24"] = "____/____/______"
-                ws["D24"].font = Font(name="Arial", size=12)
-                ws["A25"] = "Conferência Interna:"
-                ws["A25"].font = Font(name="Arial", size=12, bold=True)
+                    ws.cell(row=l24, column=col).border = Border(bottom=Side(style='thin'))
+                ws[f"D{l24}"] = "____/____/______"
+                ws[f"D{l24}"].font = Font(name="Arial", size=12)
+                ws[f"A{l24+1}"] = "Conferência Interna:"
+                ws[f"A{l24+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # LINHA 27 - NOME MOTORISTA
+                # NOME MOTORISTA
                 for col in range(1, 4):
-                    ws.cell(row=27, column=col).border = Border(bottom=Side(style='thin'))
-                ws["D27"] = "____/____/______"
-                ws["D27"].font = Font(name="Arial", size=12)
-                ws["A28"] = "Nome Motorista (Data)"
-                ws["A28"].font = Font(name="Arial", size=12, bold=True)
+                    ws.cell(row=l27, column=col).border = Border(bottom=Side(style='thin'))
+                ws[f"D{l27}"] = "____/____/______"
+                ws[f"D{l27}"].font = Font(name="Arial", size=12)
+                ws[f"A{l27+1}"] = "Nome Motorista (Data)"
+                ws[f"A{l27+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # LINHA 31 - NOME RECEBEDOR OBRA
+                # NOME RECEBEDOR OBRA
                 for col in range(1, 4):
-                    ws.cell(row=31, column=col).border = Border(bottom=Side(style='thin'))
-                ws["D31"] = "____/____/______"
-                ws["D31"].font = Font(name="Arial", size=12)
-                ws["A32"] = "Nome Recebedor Obra (Data)"
-                ws["A32"].font = Font(name="Arial", size=12, bold=True)
+                    ws.cell(row=l31, column=col).border = Border(bottom=Side(style='thin'))
+                ws[f"D{l31}"] = "____/____/______"
+                ws[f"D{l31}"].font = Font(name="Arial", size=12)
+                ws[f"A{l31+1}"] = "Nome Recebedor Obra (Data)"
+                ws[f"A{l31+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # LINHA 35 - ENGENHEIRO / RESPONSÁVEL OBRA
+                # ENGENHEIRO / RESPONSÁVEL OBRA
                 for col in range(1, 4):
-                    ws.cell(row=35, column=col).border = Border(bottom=Side(style='thin'))
-                ws["D35"] = "____/____/______"
-                ws["D35"].font = Font(name="Arial", size=12)
-                ws["A36"] = "Engenheiro / Responsável Obra"
-                ws["A36"].font = Font(name="Arial", size=12, bold=True)
+                    ws.cell(row=l35, column=col).border = Border(bottom=Side(style='thin'))
+                ws[f"D{l35}"] = "____/____/______"
+                ws[f"D{l35}"].font = Font(name="Arial", size=12)
+                ws[f"A{l35+1}"] = "Engenheiro / Responsável Obra"
+                ws[f"A{l35+1}"].font = Font(name="Arial", size=12, bold=True)
 
                 # PROCESSAMENTO DO BUFFER E DOWNLOAD NO STREAMLIT
                 buffer = BytesIO()
