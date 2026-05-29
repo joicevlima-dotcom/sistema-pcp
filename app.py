@@ -671,6 +671,10 @@ with aba2:
                 ws.sheet_view.showGridLines = False
                 ws.title = "Romaneio"
 
+                # PASSO 1 AQUI: Garante que a variável existe mesmo se a tela não enviar nada
+                if 'imagem_desenho' not in locals() and 'imagem_desenho' not in globals():
+                    imagem_desenho = None
+
                 # Configuração de paginação automática para impressão/PDF
                 ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
                 ws.oddFooter.right.text = "Página &P de &N"
@@ -765,27 +769,36 @@ with aba2:
                 # ============================================================
                 deslocamento = 0 
                 
-                # Se a variável imagem_desenho existir (vinda da tela), coloca o desenho
-                if 'imagem_desenho' in locals() and imagem_desenho is not None:
+                # Se houver uma foto vinda do upload, faz o tratamento correto de bytes
+                if imagem_desenho is not None:
                     try:
-                        img_perfil = OpenpyxlImage(imagem_desenho)
-                        img_perfil.width = 250   # Ajuste do tamanho do desenho do Diretor
+                        from PIL import Image as PILImage
+                        import io
+                        
+                        # Transforma o arquivo do Streamlit para o Openpyxl conseguir ler
+                        imagem_bytes = io.BytesIO(imagem_desenho.read())
+                        imagem_convertida = PILImage.open(imagem_bytes)
+                        
+                        img_perfil = OpenpyxlImage(imagem_convertida)
+                        img_perfil.width = 250   
                         img_perfil.height = 150
                         
-                        # Define a linha do desenho logo após os itens (com uma linha de folga)
+                        # Define a linha do desenho logo após os itens
                         linha_foto = max(13, linha_excel + 1)
                         celula_foto = f"C{linha_foto}"
                         ws.add_image(img_perfil, celula_foto)
                         
-                        # Empurra o rodapé 9 linhas para baixo para dar espaço perfeito à foto
+                        # Empurra o rodapé para baixo
                         deslocamento = 9 
+                        
+                        imagem_desenho.seek(0) # Reseta o arquivo por segurança
                     except Exception as e:
                         st.warning(f"Não foi possível carregar o desenho anexado: {e}")
 
-                # Se a tabela cresceu além da linha 11, ajustamos a base do rodapé por segurança
+                # Ajuste de segurança caso a tabela de itens seja gigante
                 base_linha = max(0, linha_excel - 12)
                 
-                # Definição das posições finais com os empurrões inteligentes
+                # Definição das posições dinâmicas das assinaturas
                 l15 = 15 + deslocamento + base_linha
                 l16 = 16 + deslocamento + base_linha
                 l17 = 17 + deslocamento + base_linha
