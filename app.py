@@ -657,7 +657,7 @@ with aba2:
 
                 salvar_banco(df_banco_atual)
 
-                # Gerador openpyxl
+             # Gerador openpyxl
                 wb = Workbook()
                 ws = wb.active
                 ws.sheet_view.showGridLines = False
@@ -667,12 +667,13 @@ with aba2:
                 borda_padrao = Border(left=bd_fina, right=bd_fina, top=bd_fina, bottom=bd_fina)
                 fill_cabecalho = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
-                ws.column_dimensions['A'].width = 12
-                ws.column_dimensions['B'].width = 18
-                ws.column_dimensions['C'].width = 45
-                ws.column_dimensions['D'].width = 18
+                ws.column_dimensions['A'].width = 15
+                ws.column_dimensions['B'].width = 22
+                ws.column_dimensions['C'].width = 48
+                ws.column_dimensions['D'].width = 22
                 ws.column_dimensions['E'].width = 25
 
+                # LINHAS 1, 2 E 3 - MANTÉM (Sem alterações)
                 ws.merge_cells("A1:B3")
                 ws.merge_cells("C1:D3")
                 ws.merge_cells("E1:E3")
@@ -695,6 +696,7 @@ with aba2:
 
                 primeiro_item = lista_liberacao[0]['item']
 
+                # LINHAS 4, 5, 6, 7 E 8 - ALTERADO PARA TAM 12
                 ws["A4"] = "Nº:"
                 ws["B4"] = str(op_selecionada)
                 ws["D4"] = "DIGITADO POR"
@@ -710,20 +712,24 @@ with aba2:
 
                 for r in range(4, 9):
                     ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
-                    ws.cell(row=r, column=1).font = Font(name="Arial", size=14, bold=True)
+                    ws.cell(row=r, column=1).font = Font(name="Arial", size=12, bold=True)
                     for c in range(1, 6):
                         ws.cell(row=r, column=c).border = borda_padrao
+                        if c > 1:
+                            ws.cell(row=r, column=c).font = Font(name="Arial", size=12)
 
+                # LINHA 10 - TITULOS - ALTERADO PARA TAM 12
                 titulos = ["QTD", "COD / PERFIL", "DESCRIÇÃO TÉCNICA", "MEDIDA / CORTE", "OBSERVAÇÕES"]
 
                 for col_num, titulo in enumerate(titulos, 1):
                     celula = ws.cell(row=10, column=col_num)
                     celula.value = titulo
-                    celula.font = Font(name="Arial", size=14, bold=True)
+                    celula.font = Font(name="Arial", size=12, bold=True)
                     celula.fill = fill_cabecalho
                     celula.alignment = Alignment(horizontal="center", vertical="center")
                     celula.border = borda_padrao
 
+                # LINHA 11 - DADOS - ALTERADO PARA TAM 12
                 linha_excel = 11
                 for lib in lista_liberacao:
                     item = lib["item"]
@@ -731,57 +737,69 @@ with aba2:
                     ws.cell(linha_excel, 2, item["Tipo_Cod"])
                     ws.cell(linha_excel, 3, item["Descricao"])
                     ws.cell(linha_excel, 4, item["Medida"])
-                    # CORRIGIDO: loop de formatação das células de cada linha
+                    
                     for col in range(1, 6):
-                        ws.cell(linha_excel, col).font = Font(name="Arial", size=14)
+                        ws.cell(linha_excel, col).font = Font(name="Arial", size=12)
                         ws.cell(linha_excel, col).border = borda_padrao
-                        ws.cell(linha_excel, col).alignment = Alignment(wrap_text=True, vertical="center")
+                        if col == 3:
+                            ws.cell(linha_excel, col).alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                        else:
+                            ws.cell(linha_excel, col).alignment = Alignment(horizontal="center", vertical="center")
                     linha_excel += 1
 
-                linha_ass = linha_excel + 3
-                ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
-                ws.cell(row=linha_ass, column=1).value = "Favor conferir todos os termos descritos neste romaneio antes de assinar. Verificar se os materiais estão em perfeito estado."
-                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
+                # LINHA 15 - ALTERADO PARA TEXTO DESEJADO E TAM 14
+                ws.merge_cells("A15:E15")
+                ws["A15"] = "Favor conferir todos os termos descritos neste romaneio antes de assinar."
+                ws["A15"].font = Font(name="Arial", size=14, italic=True)
 
-                linha_ass += 1
-                ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
-                ws.cell(row=linha_ass, column=1).value = "Não serão aceitas reclamações após recebimento da mercadoria."
-                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=9, italic=True)
+                # LINHA 16 - ALTERADO PARA TEXTO DESEJADO E TAM 14
+                ws.merge_cells("A16:E16")
+                ws["A16"] = "Verificar se os materiais estão em perfeito estado."
+                ws["A16"].font = Font(name="Arial", size=14, italic=True)
 
-                linha_ass += 3
-                ws.merge_cells(start_row=linha_ass, start_column=1, end_row=linha_ass, end_column=5)
-                ws.cell(row=linha_ass, column=1).value = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
-                ws.cell(row=linha_ass, column=1).font = Font(name="Arial", size=14)
+                # LINHA 17 - ALTERADO PARA TEXTO DESEJADO E TAM 14
+                ws.merge_cells("A17:E17")
+                ws["A17"] = "Não serão aceitas reclamações após recebimento da mercadoria."
+                ws["A17"].font = Font(name="Arial", size=14, italic=True)
 
-                linha_ass += 2
-                ws.cell(row=linha_ass, column=1).value = "Conferência Interna:"
-                ws.cell(row=linha_ass, column=1).font = Font(bold=True)
+                # LINHA 20 - ALTERADO PARA TEXTO DESEJADO E TAM 14
+                ws.merge_cells("A20:E20")
+                ws["A20"] = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
+                ws["A20"].font = Font(name="Arial", size=14)
+
+                # LINHA 24 - ALTERADO PARA CONFERÊNCIA INTERNA E TAM 12
+                ws["A24"] = "Conferência Interna:"
+                ws["A24"].font = Font(name="Arial", size=12, bold=True)
                 for col in range(1, 4):
-                    ws.cell(row=linha_ass + 1, column=col).border = Border(bottom=Side(style='thin'))
-                ws.cell(row=linha_ass + 1, column=4).value = "____/____/______"
+                    ws.cell(row=25, column=col).border = Border(bottom=Side(style='thin'))
+                ws["D25"] = "____/____/______"
+                ws["D25"].font = Font(name="Arial", size=12)
 
-                linha_motorista = linha_ass + 4
+                # LINHA 27 - ALTERADO PARA NOME MOTORISTA (DATA) E TAM 12
                 for col in range(1, 4):
-                    ws.cell(row=linha_motorista, column=col).border = Border(bottom=Side(style='thin'))
-                ws.cell(row=linha_motorista, column=4).value = "____/____/______"
-                ws.cell(row=linha_motorista + 1, column=1).value = "Nome Motorista (Data)"
-                ws.cell(row=linha_motorista + 1, column=1).font = Font(bold=True)
+                    ws.cell(row=27, column=col).border = Border(bottom=Side(style='thin'))
+                ws["D27"] = "____/____/______"
+                ws["D27"].font = Font(name="Arial", size=12)
+                ws["A28"] = "Nome Motorista (Data)"
+                ws["A28"].font = Font(name="Arial", size=12, bold=True)
 
-                linha_receb = linha_motorista + 4
+                # LINHA 31 - ALTERADO PARA NOME RECEBEDOR OBRA (DATA) E TAM 12
                 for col in range(1, 4):
-                    ws.cell(row=linha_receb, column=col).border = Border(bottom=Side(style='thin'))
-                ws.cell(row=linha_receb, column=4).value = "____/____/______"
-                ws.cell(row=linha_receb + 1, column=1).value = "Nome Recebedor Obra (Data)"
-                ws.cell(row=linha_receb + 1, column=1).font = Font(bold=True)
+                    ws.cell(row=31, column=col).border = Border(bottom=Side(style='thin'))
+                ws["D31"] = "____/____/______"
+                ws["D31"].font = Font(name="Arial", size=12)
+                ws["A32"] = "Nome Recebedor Obra (Data)"
+                ws["A32"].font = Font(name="Arial", size=12, bold=True)
 
-                # CORRIGIDO: bloco do engenheiro recolocado na indentação correta
-                linha_eng = linha_receb + 4
+                # LINHA 35 - ALTERADO PARA ENGENHEIRO / RESPONSÁVEL OBRA E TAM 12
                 for col in range(1, 4):
-                    ws.cell(row=linha_eng, column=col).border = Border(bottom=Side(style='thin'))
-                ws.cell(row=linha_eng, column=4).value = "____/____/______"
-                ws.cell(row=linha_eng + 1, column=1).value = "Engenheiro / Responsável Obra"
-                ws.cell(row=linha_eng + 1, column=1).font = Font(bold=True, size=12)
+                    ws.cell(row=35, column=col).border = Border(bottom=Side(style='thin'))
+                ws["D35"] = "____/____/______"
+                ws["D35"].font = Font(name="Arial", size=12)
+                ws["A36"] = "Engenheiro / Responsável Obra"
+                ws["A36"].font = Font(name="Arial", size=12, bold=True)
 
+                # SALVAMENTO DO BUFFER
                 buffer = BytesIO()
                 wb.save(buffer)
                 buffer.seek(0)
@@ -793,24 +811,6 @@ with aba2:
                     file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-    else:
-        st.info("Nenhuma OP encontrada na base de dados.")
-
-# ============================================================
-# ABA 3: PAINEL GERAL DE SALDOS
-# ============================================================
-
-with aba3:
-    st.subheader("Painel Geral de Monitoramento de Saldos")
-
-    try:
-        df_ver = carregar_banco()
-        if not df_ver.empty:
-            st.dataframe(df_ver, use_container_width=True)
-        else:
-            st.info("Nenhum dado encontrado na base.")
-    except Exception as e:
-        st.error(f"Erro ao carregar painel: {e}")
 
 # ============================================================
 # ABA 4: ACOMPANHAMENTO LISTA DE MATERIAIS
