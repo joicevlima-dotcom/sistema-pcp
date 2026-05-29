@@ -194,7 +194,8 @@ def carregar_materiais():
             "Unidade",
             "Qtd_Total",
             "Qtd_Enviada",
-            "Saldo"
+            "Saldo",
+            "Etapa"   # CORRIGIDO: estava faltando vírgula (concatenação silenciosa)
         ])
 
     except Exception as e:
@@ -207,8 +208,8 @@ def carregar_materiais():
             "Unidade",
             "Qtd_Total",
             "Qtd_Enviada",
-            "Saldo"
-            "Etapa"
+            "Saldo",
+            "Etapa"   # CORRIGIDO: estava faltando vírgula (concatenação silenciosa)
         ])
 
 
@@ -565,7 +566,7 @@ with aba1:
                         if not df_banco.empty and "OP" in df_banco.columns:
                             df_banco = df_banco[df_banco["OP"].astype(str) != str(numero_op).strip()]
                         df_final = pd.concat([df_banco, df_novos], ignore_index=True)
-                    except:
+                    except Exception:
                         df_final = df_novos
 
                     salvar_banco(df_final)
@@ -584,7 +585,9 @@ with aba2:
 
     df_banco = carregar_banco()
 
-    # Inicializa a variável como None para evitar o erro NameError no gerador openpyxl
+    # CORRIGIDO: inicializa lista_liberacao aqui para evitar NameError caso df_banco seja vazio
+    lista_liberacao = []
+    # CORRIGIDO: inicializa imagem_desenho aqui para garantir que sempre existe
     imagem_desenho = None
 
     if not df_banco.empty and "OP" in df_banco.columns:
@@ -593,18 +596,15 @@ with aba2:
 
         itens_op = df_banco[df_banco["OP"].astype(str) == str(op_selecionada)].copy()
 
-        # Atualizado: Criando 3 colunas para acomodar o campo de imagem sem poluir a tela
         col_cab1, col_cab2, col_cab3 = st.columns([1, 2, 2])
         with col_cab1:
             digitado_por = st.text_input("Digitado por:", value="JOICE")
         with col_cab2:
             endereco_obra = st.text_input("Endereço da Obra:")
         with col_cab3:
-            # Novo campo de upload para o seu Diretor colocar a foto da travessa/perfil
             imagem_desenho = st.file_uploader("📷 Desenho do Perfil (Opcional):", type=["png", "jpg", "jpeg"])
 
         st.write("---")
-        lista_liberacao = []
 
         for index, row in itens_op.iterrows():
             col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
@@ -663,17 +663,14 @@ with aba2:
                     df_banco_atual.at[idx, "Saldo"] = int(df_banco_atual.at[idx, "Saldo"]) - lib["qtd_saida"]
 
                 salvar_banco(df_banco_atual)
-                
-                # O seu código do "# Gerador openpyxl" que configuramos entra a partir daqui...
-             # Gerador openpyxl
+
+                # ============================================================
+                # GERADOR OPENPYXL
+                # ============================================================
                 wb = Workbook()
                 ws = wb.active
                 ws.sheet_view.showGridLines = False
                 ws.title = "Romaneio"
-
-                # PASSO 1 AQUI: Garante que a variável existe mesmo se a tela não enviar nada
-                if 'imagem_desenho' not in locals() and 'imagem_desenho' not in globals():
-                    imagem_desenho = None
 
                 # Configuração de paginação automática para impressão/PDF
                 ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
@@ -683,14 +680,14 @@ with aba2:
                 borda_padrao = Border(left=bd_fina, right=bd_fina, top=bd_fina, bottom=bd_fina)
                 fill_cabecalho = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
 
-                # Larguras das colunas baseadas no seu modelo de excelência
+                # Larguras das colunas
                 ws.column_dimensions['A'].width = 15
                 ws.column_dimensions['B'].width = 22
                 ws.column_dimensions['C'].width = 48
                 ws.column_dimensions['D'].width = 22
                 ws.column_dimensions['E'].width = 25
 
-                # LINHAS 1, 2 E 3 - CABEÇALHO (Título e Imagens)
+                # LINHAS 1, 2 E 3 - CABEÇALHO
                 ws.merge_cells("A1:B3")
                 ws.merge_cells("C1:D3")
                 ws.merge_cells("E1:E3")
@@ -713,7 +710,7 @@ with aba2:
 
                 primeiro_item = lista_liberacao[0]['item']
 
-                # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (TUDO EM MAIÚSCULO)
+                # LINHAS 4 A 8 - INFORMAÇÕES GERAIS
                 ws["A4"] = "Nº:"
                 ws["B4"] = str(op_selecionada).upper()
                 ws["D4"] = "DIGITADO POR"
@@ -746,7 +743,7 @@ with aba2:
                     celula.alignment = Alignment(horizontal="center", vertical="center")
                     celula.border = borda_padrao
 
-                # LINHA 11 - ITENS E DADOS DO CARREGAMENTO
+                # LINHA 11+ - ITENS DO CARREGAMENTO
                 linha_excel = 11
                 for lib in lista_liberacao:
                     item = lib["item"]
@@ -754,7 +751,7 @@ with aba2:
                     ws.cell(linha_excel, 2, str(item["Tipo_Cod"]).upper())
                     ws.cell(linha_excel, 3, str(item["Descricao"]).upper())
                     ws.cell(linha_excel, 4, str(item["Medida"]).upper())
-                    
+
                     for col in range(1, 6):
                         ws.cell(linha_excel, col).font = Font(name="Arial", size=12)
                         ws.cell(linha_excel, col).border = borda_padrao
@@ -766,38 +763,24 @@ with aba2:
 
                 # ============================================================
                 # CONTROLE DINÂMICO DO DESENHO E DESLOCAMENTO DO RODAPÉ
+                # CORRIGIDO: indentação correta e ws.add_image() adicionado
                 # ============================================================
-                deslocamento = 0 
-                
-                # Se houver uma foto vinda do upload, faz o tratamento correto de bytes
+                deslocamento = 0
+
                 if imagem_desenho is not None:
                     try:
-                        from PIL import Image as PILImage
-                        import io
-                        
-                        # Transforma o arquivo do Streamlit para o Openpyxl conseguir ler
-                        imagem_bytes = io.BytesIO(imagem_desenho.read())
-                        imagem_convertida = PILImage.open(imagem_bytes)
-                        
-                        img_perfil = OpenpyxlImage(imagem_convertida)
-                        img_perfil.width = 250   
+                        imagem_desenho.seek(0)
+                        img_perfil = OpenpyxlImage(imagem_desenho)
+                        img_perfil.width = 250
                         img_perfil.height = 150
-                        
-                        # Define a linha do desenho logo após os itens
-                        linha_foto = max(13, linha_excel + 1)
-                        celula_foto = f"C{linha_foto}"
-                        ws.add_image(img_perfil, celula_foto)
-                        
-                        # Empurra o rodapé para baixo
-                        deslocamento = 9 
-                        
-                        imagem_desenho.seek(0) # Reseta o arquivo por segurança
+                        ws.add_image(img_perfil, f"A{linha_excel + 1}")
+                        deslocamento = 8  # espaço extra para a imagem não sobrepor o rodapé
                     except Exception as e:
                         st.warning(f"Não foi possível carregar o desenho anexado: {e}")
 
                 # Ajuste de segurança caso a tabela de itens seja gigante
                 base_linha = max(0, linha_excel - 12)
-                
+
                 # Definição das posições dinâmicas das assinaturas
                 l15 = 15 + deslocamento + base_linha
                 l16 = 16 + deslocamento + base_linha
@@ -808,7 +791,7 @@ with aba2:
                 l31 = 31 + deslocamento + base_linha
                 l35 = 35 + deslocamento + base_linha
 
-                # LINHAS DE TERMOS E CONDIÇÕES (TAMANHO 14)
+                # TERMOS E CONDIÇÕES
                 ws.merge_cells(f"A{l15}:E{l15}")
                 ws[f"A{l15}"] = "Favor conferir todos os termos descritos neste romaneio antes de assinar."
                 ws[f"A{l15}"].font = Font(name="Arial", size=14, italic=True)
@@ -825,9 +808,7 @@ with aba2:
                 ws[f"A{l20}"] = "Recebi da Fachadas Passold as mercadorias acima relacionadas."
                 ws[f"A{l20}"].font = Font(name="Arial", size=14)
 
-                # SEÇÃO DE ASSINATURAS MILIMÉTRICAS (Linha em cima, Texto embaixo)
-                
-                # CONFERÊNCIA INTERNA
+                # SEÇÃO DE ASSINATURAS
                 for col in range(1, 4):
                     ws.cell(row=l24, column=col).border = Border(bottom=Side(style='thin'))
                 ws[f"D{l24}"] = "____/____/______"
@@ -835,7 +816,6 @@ with aba2:
                 ws[f"A{l24+1}"] = "Conferência Interna:"
                 ws[f"A{l24+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # NOME MOTORISTA
                 for col in range(1, 4):
                     ws.cell(row=l27, column=col).border = Border(bottom=Side(style='thin'))
                 ws[f"D{l27}"] = "____/____/______"
@@ -843,7 +823,6 @@ with aba2:
                 ws[f"A{l27+1}"] = "Nome Motorista (Data)"
                 ws[f"A{l27+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # NOME RECEBEDOR OBRA
                 for col in range(1, 4):
                     ws.cell(row=l31, column=col).border = Border(bottom=Side(style='thin'))
                 ws[f"D{l31}"] = "____/____/______"
@@ -851,7 +830,6 @@ with aba2:
                 ws[f"A{l31+1}"] = "Nome Recebedor Obra (Data)"
                 ws[f"A{l31+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # ENGENHEIRO / RESPONSÁVEL OBRA
                 for col in range(1, 4):
                     ws.cell(row=l35, column=col).border = Border(bottom=Side(style='thin'))
                 ws[f"D{l35}"] = "____/____/______"
@@ -859,7 +837,7 @@ with aba2:
                 ws[f"A{l35+1}"] = "Engenheiro / Responsável Obra"
                 ws[f"A{l35+1}"].font = Font(name="Arial", size=12, bold=True)
 
-                # PROCESSAMENTO DO BUFFER E DOWNLOAD NO STREAMLIT
+                # DOWNLOAD
                 buffer = BytesIO()
                 wb.save(buffer)
                 buffer.seek(0)
@@ -871,6 +849,29 @@ with aba2:
                     file_name=f"Romaneio_OP_{op_selecionada}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+
+# ============================================================
+# ABA 3: PAINEL GERAL DE SALDOS
+# CORRIGIDO: aba3 não tinha bloco "with aba3:" no código original
+# ============================================================
+
+with aba3:
+
+    st.subheader("Painel Geral de Saldos")
+
+    df_painel = carregar_banco()
+
+    if not df_painel.empty:
+        obras_painel = ["Todas"] + sorted(df_painel["Obra"].dropna().unique().tolist())
+        obra_filtro = st.selectbox("Filtrar por Obra:", obras_painel, key="filtro_painel")
+
+        if obra_filtro != "Todas":
+            df_painel = df_painel[df_painel["Obra"] == obra_filtro]
+
+        st.dataframe(df_painel, use_container_width=True)
+    else:
+        st.info("Nenhum dado cadastrado ainda.")
+
 # ============================================================
 # ABA 4: ACOMPANHAMENTO LISTA DE MATERIAIS
 # ============================================================
@@ -927,7 +928,7 @@ with aba4:
                 item_manual = st.text_input("Item")
 
             with c2:
-                descricao_manual = st.text_input("Descrição")
+                descricao_manual_comp = st.text_input("Descrição", key="desc_comp_manual")
 
             with c3:
                 unidade_manual = st.text_input("Unidade")
@@ -947,7 +948,7 @@ with aba4:
                 novo_item = {
                     "Obra": obra_selecionada,
                     "Item": item_manual,
-                    "Descricao": descricao_manual.upper(),
+                    "Descricao": descricao_manual_comp.upper(),
                     "Unidade": unidade_manual.upper(),
                     "Qtd_Total": qtd_manual,
                     "Qtd_Enviada": 0,
@@ -987,6 +988,11 @@ with aba4:
     else:
 
         st.info("Nenhuma lista de componentes cadastrada.")
+
+# ============================================================
+# ABA 5: ROMANEIO DE COMPONENTES
+# ============================================================
+
 with aba5:
 
     st.subheader("Emissão de Romaneio de Componentes")
@@ -1088,11 +1094,8 @@ with aba5:
             for item in lista_saida_componentes:
 
                 resumo.append({
-
                     "Item": item["item"]["Item"],
-
                     "Descrição": item["item"]["Descricao"],
-
                     "Quantidade": item["qtd_saida"]
                 })
 
@@ -1109,7 +1112,6 @@ with aba5:
                 for item_saida in lista_saida_componentes:
 
                     idx = item_saida["index"]
-
                     qtd = item_saida["qtd_saida"]
 
                     df_atual.at[idx, "Qtd_Enviada"] = (
