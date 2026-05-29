@@ -707,7 +707,7 @@ with aba2:
                 ws["D4"] = "DIGITADO POR"
                 ws["E4"] = digitado_por.upper()
                 ws["A5"] = "Data:"
-                ws["B5"] = datetime.now().strftime('%d/%m/%Y %H:%M')
+                ws["B5"] = datetime.now().strftime('%d/%m/%Y')
                 ws["A6"] = "Obra:"
                 ws["B6"] = str(primeiro_item.get('Obra', '')).upper()
                 ws["A7"] = "Nº Projeto:"
