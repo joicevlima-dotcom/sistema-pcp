@@ -765,6 +765,9 @@ with aba2:
                 # ============================================================
                 # CONTROLE CORRIGIDO DO DESENHO (BUSCA DIRETO DA CHAVE DO STREAMLIT)
                 # ============================================================
+# ============================================================
+                # CONTROLE DEFINITIVO DO DESENHO (SALVANDO ARQUIVO TEMPORÁRIO)
+                # ============================================================
                 deslocamento = 0 
                 
                 # Resgata o arquivo direto do state do componente de upload
@@ -775,14 +778,20 @@ with aba2:
                         from PIL import Image as PILImage
                         import io
                         
-                        # Pegamos uma cópia limpa dos bytes do arquivo carregado
+                        # Pega os bytes puros
                         dados_imagem = imagem_desenho.getvalue()
                         
                         if dados_imagem and len(dados_imagem) > 0:
+                            # Converte em imagem usando o Pillow
                             imagem_bytes = io.BytesIO(dados_imagem)
                             imagem_convertida = PILImage.open(imagem_bytes)
                             
-                            img_perfil = OpenpyxlImage(imagem_convertida)
+                            # SALVA EM UM ARQUIVO DE VERDADE NO DISCO (Evita o bug de BytesIO)
+                            caminho_temporario = "temp_desenho.png"
+                            imagem_convertida.save(caminho_temporario)
+                            
+                            # O openpyxl lê o arquivo físico perfeitamente!
+                            img_perfil = OpenpyxlImage(caminho_temporario)
                             img_perfil.width = 250   
                             img_perfil.height = 150
                             
@@ -791,6 +800,12 @@ with aba2:
                             ws.add_image(img_perfil, f"C{linha_foto}")
                             
                             deslocamento = 9 
+                            
+                            # Opcional: Remove o arquivo temporário depois de colocar no Excel por segurança
+                            # (O openpyxl guarda os dados na memória ao dar o add_image)
+                            if os.path.exists(caminho_temporario):
+                                os.remove(caminho_temporario)
+                                
                     except Exception as e:
                         st.warning(f"Não foi possível carregar o desenho anexado: {e}")
 
