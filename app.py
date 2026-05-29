@@ -683,7 +683,7 @@ with aba2:
                 ws.merge_cells("C1:D3")
                 ws.merge_cells("E1:E3")
 
-                ws["C1"] = "Comprovante de Entrega de Material"
+                ws["C1"] = "COMPROVANTE DE ENTREGA DE MATERIAL" # <- AJUSTADO: Título em Maiúsculo
                 ws["C1"].font = Font(name="Arial", size=14, bold=True)
                 ws["C1"].alignment = Alignment(horizontal="center", vertical="center")
 
@@ -701,19 +701,19 @@ with aba2:
 
                 primeiro_item = lista_liberacao[0]['item']
 
-                # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (TAMANHO 12)
+                # LINHAS 4, 5, 6, 7 E 8 - INFORMAÇÕES GERAIS (AJUSTADO: TUDO EM MAIÚSCULO)
                 ws["A4"] = "Nº:"
-                ws["B4"] = str(op_selecionada)
+                ws["B4"] = str(op_selecionada).upper()
                 ws["D4"] = "DIGITADO POR"
-                ws["E4"] = digitado_por.upper()
-                ws["A5"] = "Data:"
+                ws["E4"] = str(digitado_por).upper()
+                ws["A5"] = "DATA:"
                 ws["B5"] = datetime.now().strftime('%d/%m/%Y')
-                ws["A6"] = "Obra:"
+                ws["A6"] = "OBRA:"
                 ws["B6"] = str(primeiro_item.get('Obra', '')).upper()
-                ws["A7"] = "Nº Projeto:"
-                ws["B7"] = str(primeiro_item.get('Projeto', ''))
-                ws["A8"] = "Endereço da Obra:"
-                ws["B8"] = endereco_obra.upper()
+                ws["A7"] = "Nº PROJETO:"
+                ws["B7"] = str(primeiro_item.get('Projeto', '')).upper()
+                ws["A8"] = "ENDEREÇO DA OBRA:"
+                ws["B8"] = str(endereco_obra).upper()
 
                 for r in range(4, 9):
                     ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=3)
@@ -739,9 +739,9 @@ with aba2:
                 for lib in lista_liberacao:
                     item = lib["item"]
                     ws.cell(linha_excel, 1, lib["qtd_saida"])
-                    ws.cell(linha_excel, 2, item["Tipo_Cod"])
-                    ws.cell(linha_excel, 3, item["Descricao"])
-                    ws.cell(linha_excel, 4, item["Medida"])
+                    ws.cell(linha_excel, 2, str(item["Tipo_Cod"]).upper()) # Garante maiúsculo nos códigos
+                    ws.cell(linha_excel, 3, str(item["Descricao"]).upper()) # Garante maiúsculo nas descrições
+                    ws.cell(linha_excel, 4, str(item["Medida"]).upper())   # Garante maiúsculo nas medidas
                     
                     for col in range(1, 6):
                         ws.cell(linha_excel, col).font = Font(name="Arial", size=12)
